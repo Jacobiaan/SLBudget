@@ -222,7 +222,7 @@ def StericSL_EN4(max_depth, mask_name):
     '''Compute the steric effect in the North Sea in cm integrated from the 
     surface up to a given depth given in meters. '''
     DENS = xr.open_dataset(PATH_SLBudgets_data + 
-                           'DataDensity/density_teos10_EN421f_analysis_g10/' + 
+                           'DataSteric/density_teos10_EN421f_analysis_g10/' + 
                            'density_teos10_en4_1900_2019.nc')
     midp = (np.array(DENS.depth[1:])+np.array(DENS.depth[:-1]))/2
     midp = np.insert(midp, 0, np.array([0]))
