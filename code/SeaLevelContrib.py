@@ -9,7 +9,7 @@ import xarray as xr
 import gzip
 import xesmf as xe
 
-PATH_SeaLevelBudgets = '/Users/dewilebars/Projects/Project_SeaLevelBudgets/'
+PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
 PATH_Data = '/Users/dewilebars/Data/'
 
 # Define a few constants
@@ -33,7 +33,7 @@ def make_wind_df(lat_i, lon_i, product):
         # Use for OpenDAP:
         #NCEP1 = 'http://www.esrl.noaa.gov/psd/thredds/dodsC/Datasets/ncep.reanalysis.derived/surface_gauss/'
         #For local:
-        NCEP1_dir = PATH_SeaLevelBudgets + 'WindPressure/NCEP1/'
+        NCEP1_dir = PATH_SLBudgets_data + 'WindPressure/NCEP1/'
         u_file = NCEP1_dir + 'uwnd.10m.mon.mean.nc'
         v_file = NCEP1_dir + 'vwnd.10m.mon.mean.nc'
         p_file = NCEP1_dir + 'pres.sfc.mon.mean.nc'
@@ -47,7 +47,7 @@ def make_wind_df(lat_i, lon_i, product):
             lon_i = lon_i + 360
         
     elif product == 'ERA5':
-        ERA5_dir = PATH_SeaLevelBudgets + 'WindPressure/ERA5/'
+        ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/'
         u_file = ERA5_dir + 'ERA5_u10.nc'
         v_file = ERA5_dir + 'ERA5_v10.nc'
         p_file = ERA5_dir + 'ERA5_msl.nc'
@@ -163,11 +163,11 @@ def make_wpn_ef(tg_id, tgm_df, with_trend, product):
 
 def make_waqua_df(tg_id):
     '''Read time series of annually averaged sea level from the WAQUA model forced by ERA-interim.'''
-    dir_waqua = PATH_SeaLevelBudgets + 'DataWAQUANinaERAI'
+    dir_waqua = PATH_SLBudgets_data + 'DataWAQUANinaERAI'
     ds_wa = netCDF4.Dataset(dir_waqua+'/ERAintWAQUA_waterlevels_speed_1979_2015.nc')
 
     # Get WAQUA tide gauge names that are not editted in the same way as PSMSL names
-    tg_data_dir = PATH_SeaLevelBudgets + 'rlr_annual'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
@@ -189,7 +189,7 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     Set interp to True for a linear interpollation of missing values.
     By default use the 6 tide gauges from the zeespiegelmonitor''' 
     
-    tg_data_dir = PATH_SeaLevelBudgets + 'rlr_annual'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
@@ -218,7 +218,7 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     tg_data_df['Average'] = tg_data_df.mean(axis=1)
     return tg_data_df * 0.1 # Convert from mm to cm
 
-def StericSL(max_depth, mask_name):
+def StericSL_EN4(max_depth, mask_name):
     '''Compute the steric effect in the North Sea in cm integrated from the 
     surface up to a given depth given in meters. '''
     DENS = xr.open_dataset('density_teos10_en4_1900_2019.nc')
@@ -256,7 +256,8 @@ def StericSL(max_depth, mask_name):
 
     elif mask_name == 'EBB':
         # Extended bay of Biscay
-        mask = xr.where(np.isnan(DENS.density[0,:,:,:].sel(depth=2000, method='nearest')), np.NaN, 1)
+        mask = xr.where(np.isnan(DENS.density[0,:,:,:]
+                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
         mask = mask.where(mask.lon <= -2)
         mask = mask.where(mask.lon >= -12)
         mask = mask.where(mask.lat <= 52)
@@ -264,7 +265,8 @@ def StericSL(max_depth, mask_name):
         
     elif mask_name == 'NWS':
         # Norwegian Sea
-        mask = xr.where(np.isnan(DENS.density[0,:,:,:].sel(depth=2000, method='nearest')), np.NaN, 1)
+        mask = xr.where(np.isnan(DENS.density[0,:,:,:]
+                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
         mask = mask.where(mask.lon <= 8)
         mask = mask.where(mask.lon >= -10)
         mask = mask.where(mask.lat <= 69)
@@ -287,7 +289,7 @@ def StericSL(max_depth, mask_name):
 def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     '''Read the current GIA 250kaBP-250kaAP from the ICE6G model and output a
     time series in a pandas dataframe format'''
-    dir_ICE6G = PATH_SeaLevelBudgets + "GIA/ICE6G/"
+    dir_ICE6G = PATH_SLBudgets_data + "GIA/ICE6G/"
     locat = []
     gia = []
     with open (dir_ICE6G + "drsl.PSMSL.ICE6G_C_VM5a_O512.txt", "r") as myfile:
@@ -315,7 +317,7 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
 
 def tg_lat_lon(tg_id):
     '''Give tide gauge latitude, longitude location given the id as input'''
-    tg_data_dir = PATH_SeaLevelBudgets + 'rlr_annual'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
@@ -324,7 +326,7 @@ def tg_lat_lon(tg_id):
 def glaciers_m15_glo():
     '''Provides glacier contributions to local sea level between 1900 and 2013
     from Marzeion et al. 2015.'''
-    M15_dir = PATH_SeaLevelBudgets + 'Glaciers/Marzeion2015/tc-9-2399-2015-supplement/'
+    M15_dir = PATH_SLBudgets_data + 'Glaciers/Marzeion2015/tc-9-2399-2015-supplement/'
     M15_glo_df = pd.read_csv(M15_dir + 'data_marzeion_etal_update_2015.txt', 
                              header=None, 
                              names=['time', 'Glaciers', 'CI' ], delim_whitespace=True)
@@ -345,8 +347,8 @@ def glaciers_m15(tg_id, extrap=False, del_green=False):
     This option is handy if the peripheral glaciers are already included in the
     Greenland ice sheet contribution.'''
     
-    M15_dir = PATH_SeaLevelBudgets + 'Glaciers/Marzeion2015/tc-9-2399-2015-supplement/'
-    fp_dir = PATH_SeaLevelBudgets + 'fp_uniform/'
+    M15_dir = PATH_SLBudgets_data + 'Glaciers/Marzeion2015/tc-9-2399-2015-supplement/'
+    fp_dir = PATH_SLBudgets_data + 'fp_uniform/'
     RGl = []
     for i in range(1,19):
         RGl.append('RG'+str(i))
@@ -381,7 +383,7 @@ def glaciers_m15(tg_id, extrap=False, del_green=False):
 def glaciers_zemp19_glo():
     '''Provides glacier contributions to local sea level between 1962 and 2016
     from Zemp et al. 2019'''
-    data_dir = (PATH_SeaLevelBudgets + 
+    data_dir = (PATH_SLBudgets_data + 
                 'Glaciers/Zemp2019/Zemp_etal_results_regions_global_v11/')
     zemp_df = pd.read_csv(data_dir + 'Zemp_etal_results_global.csv', 
                           skiprows=19)
@@ -403,9 +405,9 @@ def glaciers_zemp19(tg_id, extrap=False, del_green=False):
     This option is handy if the peripheral glaciers are already included in the
     Greenland ice sheet contribution.'''
     
-    data_dir = (PATH_SeaLevelBudgets + 
+    data_dir = (PATH_SLBudgets_data + 
                 'Glaciers/Zemp2019/Zemp_etal_results_regions_global_v11/')
-    fp_dir = PATH_SeaLevelBudgets + 'fp_uniform/'
+    fp_dir = PATH_SLBudgets_data + 'fp_uniform/'
     RegNames = ('ALA', 'WNA', 'ACN', 'ACS', 'GRL', 'ISL', 'SJM', 'SCA', 'RUA', 
                 'ASN', 'CEU', 'CAU', 'ASC', 'ASW', 'ASE', 'TRP', 'SAN', 'NZL', 
                 'ANT')
@@ -446,7 +448,7 @@ def glaciers_zemp19(tg_id, extrap=False, del_green=False):
 def ant_imbie_glo(extrap=False):
     '''Read IMBIE 2018 excel data, compute yearly averages and return a data 
     frame of sea level rise in cm'''
-    imbie_dir = PATH_SeaLevelBudgets + 'Antarctica/IMBIE2018/'
+    imbie_dir = PATH_SLBudgets_data + 'Antarctica/IMBIE2018/'
     im_df = pd.read_excel(imbie_dir  + 'imbie_dataset-2018_07_23.xlsx', sheet_name='Antarctica')
     im_df = im_df.set_index('Year')
     im_df = pd.DataFrame(data=dict( Antarctica=im_df[im_df.columns[2]]))
@@ -492,8 +494,8 @@ def ant_rignot19_glo():
 def psmsl2mit(tg_id):
     '''Function that translates the tide gauge number from the PSMSL data base to 
     the numbers used by the kernels of Mitrovica et al. 2018'''
-    tg_data_dir = PATH_SeaLevelBudgets + 'rlr_annual'
-    kern_dir = PATH_SeaLevelBudgets + 'Mitrovica2018Kernels/'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
+    kern_dir = PATH_SLBudgets_data + 'Mitrovica2018Kernels/'
     kern_df = pd.read_fwf(kern_dir + 'sites.txt', header=None)
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
@@ -522,7 +524,7 @@ def ices_fp(tg_id, fp, ices):
     for i in range(len(tg_id)):
         i_mit = psmsl2mit([ tg_id[i] ])
         if fp == 'mit_unif' or fp == 'mit_grace':
-            kern_dir = PATH_SeaLevelBudgets + 'Mitrovica2018Kernels/'
+            kern_dir = PATH_SLBudgets_data + 'Mitrovica2018Kernels/'
             kern_t = gzip.open(kern_dir + 'kernels/grid_'+ str(i_mit[0]) +'_' + ices +'.txt.gz','rb')
             kern = np.loadtxt(kern_t)
             kern = kern[::-1,:]
@@ -543,7 +545,7 @@ def ices_fp(tg_id, fp, ices):
         if fp == 'mit_grace':
             #Read GRACE data from Adhikari et al. 2019.
             # The grid is uniform with 0.5º steps
-            Adh_dir = PATH_SeaLevelBudgets + 'Adhikari2019/'
+            Adh_dir = PATH_SLBudgets_data + 'Adhikari2019/'
             slf_ds = xr.open_dataset(Adh_dir + 'SLFgrids_GFZOP_CM_WITHrotation.nc')
             lat = slf_ds.variables['lat'][:]
             lon = slf_ds.variables['lon'][:]
@@ -570,7 +572,7 @@ def ices_fp(tg_id, fp, ices):
             slr_glo = - (kern_rg_1 * weh_diff * area).sum() * er**2 / oa
             fp_val.append((slr_im / slr_glo).values.tolist())
         if fp == 'fred_unif':
-            fp_dir = PATH_SeaLevelBudgets + 'fp_uniform/'
+            fp_dir = PATH_SLBudgets_data + 'fp_uniform/'
             tg_lat, tg_lon =  tg_lat_lon(tg_id[i])
             if ices == 'ant':
                 filename = 'AIS.nc' #WAIS and EAIS are also available
@@ -583,7 +585,7 @@ def ices_fp(tg_id, fp, ices):
 def green_mouginot19_glo():
     '''Read the Greenland contribution to sea level from Mouginot et al. 2019 and export in a dataframe.
     Date available from 1972 to 2018.'''
-    green_dir = PATH_SeaLevelBudgets + 'Greenland/'
+    green_dir = PATH_SLBudgets_data + 'Greenland/'
     mo_df = pd.read_csv(green_dir + 'Mouginot2019_MB.txt')
     del mo_df['Unnamed: 0']
     mo_df = mo_df.T
@@ -597,7 +599,7 @@ def green_mouginot19_glo():
 
 def TWS_loc(tg_id):
     '''Read TWS effect on relative sea level derived from GRACE from a file given by Thomas Frederikse.'''
-    dir_fpg = PATH_SeaLevelBudgets + 'fp_grace/'
+    dir_fpg = PATH_SLBudgets_data + 'fp_grace/'
     fpg_ds1 = xr.open_dataset(dir_fpg + 'sle_results.nc')
     fpg_ds = xr.open_dataset(dir_fpg + 'sle_results.nc', group='TWS/rsl/')
     ts_mean = fpg_ds['ts_mean']
@@ -624,7 +626,7 @@ def TWS_glo(extrap=False):
     '''Build a pandas data frame from the global terrestrial water storage 
     reconstructions of Humphrey and Gudmundson 2019. Data available from 1901-01
     to 2014-12. Option avialable to '''
-    dir_tws = PATH_SeaLevelBudgets + \
+    dir_tws = PATH_SLBudgets_data + \
     'TWS/Humphrey2019/04_global_averages_allmodels/monthly/ensemble_means/'
     #Choice of files:
     # 'GRACE_REC_v03_GSFC_ERA5_monthly_ensemblemean_withoutGreenlandAntarctica.txt'

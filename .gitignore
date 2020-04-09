@@ -4,3 +4,6 @@ OldData/
 data/
 notes/
 outputs/
+code/.ipynb_checkpoints/
+code/__pycache__/
+notebooks/.ipynb_checkpoints/
