@@ -218,6 +218,59 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     tg_data_df['Average'] = tg_data_df.mean(axis=1)
     return tg_data_df * 0.1 # Convert from mm to cm
 
+def steric_masks_north_sea(da, mask_name):
+    '''Define a few masks to use to compute the steric expansion that is felt 
+    in the North Sea'''
+    if mask_name == 'ENS':
+        # Extended North Sea mask
+        lat = np.array(da.lat)
+        lon = np.array(da.lon)
+        LatAr = np.repeat(lat[:,np.newaxis], len(lon), 1)
+        LatAr = xr.DataArray(LatAr, dims=['lat', 'lon'], 
+                             coords={'lat' : lat, 'lon' : lon})
+        LonAr = np.repeat(lon[np.newaxis,:], len(lat), 0)
+        LonAr = xr.DataArray(LonAr, dims=['lat', 'lon'], 
+                             coords={'lat' : lat, 'lon' : lon})
+
+        mask_med = xr.where(np.isnan(da[0,0,:,:]), np.nan, 1)
+        mask_med1 = mask_med.where((LonAr >= -8) & (LatAr <= 42) )
+        mask_med1 = xr.where(np.isnan(mask_med1), 1, np.nan)
+        mask_med2 = mask_med.where((LonAr >= 1) & (LatAr <= 48) )
+        mask_med2 = xr.where(np.isnan(mask_med2), 1, np.nan)
+        mask_med = mask_med * mask_med1 * mask_med2
+
+        mask = xr.where(np.isnan(da[0,0,:,:]), np.nan, 1)
+        mask = mask.where(mask.lon <= 7)
+        mask = mask.where(mask.lon >= -16)
+        mask = mask.where(mask.lat <= 69) #Normal value: 60 or 69
+        mask = mask.where(mask.lat >= 33)
+        mask = mask * mask_med
+
+    elif mask_name == 'EBB':
+        # Extended bay of Biscay
+        mask = xr.where(np.isnan(da[0,:,:,:]
+                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
+        mask = mask.where(mask.lon <= -2)
+        mask = mask.where(mask.lon >= -12)
+        mask = mask.where(mask.lat <= 52)
+        mask = mask.where(mask.lat >= 35)
+        
+    elif mask_name == 'NWS':
+        # Norwegian Sea
+        mask = xr.where(np.isnan(da[0,:,:,:]
+                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
+        mask = mask.where(mask.lon <= 8)
+        mask = mask.where(mask.lon >= -10)
+        mask = mask.where(mask.lat <= 69)
+        mask = mask.where(mask.lat >= 60)
+        
+    else:
+        print('ERROR: mask_name argument is not available')
+
+    del mask['depth']
+    del mask['time']
+    return mask
+
 def StericSL_EN4(max_depth, mask_name):
     '''Compute the steric effect in the North Sea in cm integrated from the 
     surface up to a given depth given in meters. '''
@@ -231,54 +284,9 @@ def StericSL_EN4(max_depth, mask_name):
     thick = midp[1:] - midp[:-1]
     thick = xr.DataArray(thick, coords={'depth': DENS.depth[:]}, dims='depth')
     SumDens = DENS.density * thick
-    if mask_name == 'ENS':
-        # Extended North Sea mask
-        lat = np.array(DENS.lat)
-        lon = np.array(DENS.lon)
-        LatAr = np.repeat(lat[:,np.newaxis], len(lon), 1)
-        LatAr = xr.DataArray(LatAr, dims=['lat', 'lon'], 
-                             coords={'lat' : lat, 'lon' : lon})
-        LonAr = np.repeat(lon[np.newaxis,:], len(lat), 0)
-        LonAr = xr.DataArray(LonAr, dims=['lat', 'lon'], 
-                             coords={'lat' : lat, 'lon' : lon})
 
-        mask_med = xr.where(np.isnan(DENS.density[0,0,:,:]), np.nan, 1)
-        mask_med1 = mask_med.where((LonAr >= -8) & (LatAr <= 42) )
-        mask_med1 = xr.where(np.isnan(mask_med1), 1, np.nan)
-        mask_med2 = mask_med.where((LonAr >= 1) & (LatAr <= 48) )
-        mask_med2 = xr.where(np.isnan(mask_med2), 1, np.nan)
-        mask_med = mask_med * mask_med1 * mask_med2
-
-        mask = xr.where(np.isnan(DENS.density[0,0,:,:]), np.nan, 1)
-        mask = mask.where(mask.lon <= 7)
-        mask = mask.where(mask.lon >= -16)
-        mask = mask.where(mask.lat <= 69) #Normal value: 60 or 69
-        mask = mask.where(mask.lat >= 33)
-        mask = mask * mask_med
-
-    elif mask_name == 'EBB':
-        # Extended bay of Biscay
-        mask = xr.where(np.isnan(DENS.density[0,:,:,:]
-                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
-        mask = mask.where(mask.lon <= -2)
-        mask = mask.where(mask.lon >= -12)
-        mask = mask.where(mask.lat <= 52)
-        mask = mask.where(mask.lat >= 35)
-        
-    elif mask_name == 'NWS':
-        # Norwegian Sea
-        mask = xr.where(np.isnan(DENS.density[0,:,:,:]
-                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
-        mask = mask.where(mask.lon <= 8)
-        mask = mask.where(mask.lon >= -10)
-        mask = mask.where(mask.lat <= 69)
-        mask = mask.where(mask.lat >= 60)
-        
-    else:
-        print('ERROR: mask_name argument is not available')
-
-    del mask['depth']
-    del mask['time']
+    mask = steric_masks_north_sea(DENS.density, mask_name)
+    
     SumDens_NS = (SumDens * mask).mean(dim=['lat', 'lon'])
     StericSL_NS = (- SumDens_NS.sel(depth=slice(0,max_depth)).sum(dim='depth') 
                    / (DENS.density[0 ,0 ,: ,:] * mask).mean(dim=['lat', 'lon'])) * 100

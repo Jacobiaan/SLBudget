@@ -17,6 +17,9 @@ for year in range(year_min, year_max+1):
     ifiles = 'Steric_IAP_2000m_year_'+str(year)+ '_month_*.nc'
     print('Working on files:'+ifiles)
     ds = xr.open_mfdataset(Dir+ifiles)
+    # Change the longitude range from 0,360 to -180,180
+    ds.lon.values = (((ds.lon + 180 ) % 360) - 180)
+    ds = ds.sortby(ds.lon)
     
     len_ds = len(ds.time)
     if len_ds != 12:
