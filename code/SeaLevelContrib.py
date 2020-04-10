@@ -593,14 +593,16 @@ def ices_fp(tg_id, fp, ices):
     return np.mean(fp_val)
 
 def green_mouginot19_glo():
-    '''Read the Greenland contribution to sea level from Mouginot et al. 2019 and export in a dataframe.
+    '''Read the Greenland contribution to sea level from Mouginot et al. 2019 and 
+    export to a dataframe.
     Date available from 1972 to 2018.'''
     green_dir = PATH_SLBudgets_data + 'Greenland/'
     mo_df = pd.read_csv(green_dir + 'Mouginot2019_MB.txt')
     del mo_df['Unnamed: 0']
     mo_df = mo_df.T
     mo_df.columns = ['Greenland']
-    mo_df.Greenland = pd.to_numeric(mo_df.Greenland.astype(str).str.replace(',','.'), errors='coerce')
+    mo_df.Greenland = pd.to_numeric(
+        mo_df.Greenland.astype(str).str.replace(',','.'), errors='coerce')
     mo_df['Years'] = np.arange(1972,2019)
     mo_df = mo_df.set_index('Years')
     mo_df = - mo_df / 3600 #Convert from Gt to cm
