@@ -455,7 +455,7 @@ def glaciers_zemp19(tg_id, extrap=False, del_green=False):
             zemp_loc_tot_df.Glaciers.iloc[-1] + trend
     return zemp_loc_tot_df
 
-def ant_imbie_glo(extrap=False):
+def ant_imbie18(extrap=False):
     '''Read IMBIE 2018 excel data, compute yearly averages and return a data 
     frame of sea level rise in cm'''
     imbie_dir = PATH_SLBudgets_data + 'Antarctica/IMBIE2018/'
@@ -480,7 +480,7 @@ def ant_imbie_glo(extrap=False):
             im_df.loc[im_df.index.max() + 1] = im_df.Antarctica.iloc[-1] + trend
     return im_df / 10 # convert from mm to cm
 
-def ant_rignot19_glo():
+def ant_rignot19():
     '''Use data of mass balance from table 2 of Rignot et al. 2019. 
     Fit a second order polynomial through these data that covers 1979 to 2017. 
     Extend to 1950 assuming that Antarctica did not loose mass before 1979.'''
@@ -634,7 +634,7 @@ def TWS_loc(tg_id):
     TWS_df = TWS_df.loc[2003:2016] # Exclude first and last year
     return TWS_df / 10 # Convert from mm to cm
 
-def TWS_glo(extrap=False):
+def tws_glo_humphrey19(extrap=False):
     '''Build a pandas data frame from the global terrestrial water storage 
     reconstructions of Humphrey and Gudmundson 2019. Data available from 1901-01
     to 2014-12. Option avialable to '''
