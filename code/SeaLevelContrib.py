@@ -713,3 +713,67 @@ def GloSLDang19():
     del GloSLDang19_df['Error'] # Remove error columns because the yearly error is not the average of monthly errors
     GloSLDang19_df.index.names = ['time']
     return GloSLDang19_df / 10 # Convert from mm to cm
+
+def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
+                 opt_greenland, opt_tws, opt_wind_ibe):
+    '''Compute the sea level budget at tide gauge locations'''
+    tg_df = tide_gauge_obs(tg_id, interp=True)
+    if opt_steric[0] == 'EN4':
+        steric_df = StericSL_EN4(max_depth=opt_steric[2], mask_name=opt_steric[1])
+    else:
+        print('ERROR: option for opt_steric[0] undefined')
+
+    for i in range(len(tg_id)):
+        print('Working on tide gauge id: '+ str(tg_id[i]))
+        gia_ts_df = GIA_ICE6G([tg_id[i]])
+
+        if opt_glaciers == 'marzeion15':
+            glac_ts_df = glaciers_m15([tg_id[i]], extrap=True, del_green=True)
+        elif opt_glaciers == 'zemp19':
+            glac_ts_df = glaciers_zemp19([tg_id[i]], extrap=True, del_green=True)
+        else:
+            print('ERROR: option for opt_glaciers undefined')
+
+        if opt_antarctica == 'imbie18':
+            ant_df = ant_imbie_glo(extrap=True) * ices_fp(tg_id, 'mit_unif', 
+                                                                  'ant')
+        elif opt_antarctica == 'rignot19':
+            ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
+        else:
+            print('ERROR: option for opt_antarctica undefined')
+
+        green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 'mit_unif', 
+                                                            'green')
+        tws_df = tws_glo_humphrey19(extrap=True)
+        sealevel_df = steric_df
+        sealevel_df = sealevel_df.join([gia_ts_df, glac_ts_df, ant_df, green_df, 
+                                        tws_df], how='inner')
+        sealevel_df['Total'] = sealevel_df.sum(axis=1)
+
+        if opt_wind_ibe[0] == 'regression':
+            diff_tg_df = tg_df.Average - sealevel_df.Total
+            diff_tg_df = diff_tg_df.to_frame(name='height').dropna()
+            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_tg_df, with_trend=False, 
+                                    product=opt_wind_ibe[1])
+        elif opt_wind_ibe[0] == 'dynamical_model':
+            print('!!! This option does not include nodal cycle')
+            if opt_wind_ibe[1] == 'WAQUA':
+                wpn_ef_df = make_waqua_df(tg_id[i])
+            else:
+                print('ERROR: option for opt_wind_ibe[1] undefined')
+        else:
+            print('ERROR: option for opt_wind_ibe[0] undefined')
+
+        sealevel_df = sealevel_df.join(wpn_ef_df, how='inner')
+        del sealevel_df['Total']
+        sealevel_df.insert(0, 'Total', sealevel_df.sum(axis=1))
+        sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()
+        sealevel_df.index.name = 'time'
+        sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
+        sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(tg_id[i])])
+        if i==0:
+            slall_df = sealevel_df.copy()
+        else:
+            slall_df = pd.concat([slall_df, sealevel_df], axis=1)
+
+    return slall_df
