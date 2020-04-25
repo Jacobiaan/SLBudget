@@ -715,8 +715,9 @@ def GloSLDang19():
     return GloSLDang19_df / 10 # Convert from mm to cm
 
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
-                 opt_greenland, opt_tws, opt_wind_ibe):
-    '''Compute the sea level budget at tide gauge locations'''
+                 opt_greenland, opt_tws, opt_wind_ibe, avg):
+    '''Compute the sea level budget at tide gauge locations. 
+    avg (boolean): Compute the average budget over the list of tide gauges'''
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] == 'EN4':
         steric_df = StericSL_EN4(max_depth=opt_steric[2], mask_name=opt_steric[1])
@@ -775,5 +776,12 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             slall_df = sealevel_df.copy()
         else:
             slall_df = pd.concat([slall_df, sealevel_df], axis=1)
+
+    if avg:        # Compute the average contributors at all tide gauges
+        slmean_df = slall_df.groupby(level=1, axis=1, sort=False).mean()
+        slmean_df = slmean_df.join(tg_df.Average, how='inner')
+        slmean_df = slmean_df.rename(columns={'Average': 'Obs'})
+        slmean_df['Obs'] = slmean_df['Obs'] - slmean_df['Obs'].iloc[0]
+        slall_df = slmean_df
 
     return slall_df
