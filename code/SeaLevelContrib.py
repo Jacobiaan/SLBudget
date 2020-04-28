@@ -8,6 +8,8 @@ import statsmodels.api as sm
 import xarray as xr
 import gzip
 import xesmf as xe
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
 PATH_Data = '/Users/dewilebars/Data/'
@@ -785,3 +787,91 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         slall_df = slmean_df
 
     return slall_df
+
+def plot_budget(tg_sel, slmean_df, separate_global_steric):
+    '''Summary plot of the sea level budget. Should be split in smaller functions.'''
+    ### Plot compaison between tide gauge observations and budget
+    fig, ax = plt.subplots(2, 2, figsize=(9,9), gridspec_kw={'height_ratios': [1, 1]})
+    fig.tight_layout(pad=1.9)
+
+    ax[0,0].plot(slmean_df.Obs - slmean_df.Obs.mean(), 'o-', label='Tide gauge observations')
+    ax[0,0].plot(slmean_df.Total - slmean_df.Total.mean() , 'r-', label='Sum of contributors')
+
+    #ax[0,0].set_xlabel('time')
+    ax[0,0].set_ylabel('sea level (cm)')
+    ax[0,0].set_title('Yearly average sea level at '+tg_sel)
+    ax[0,0].grid(True)
+    ax[0,0].legend(loc='upper left')
+
+    ### Plot the difference between observations and budget
+    diff_df = slmean_df.Obs - slmean_df.Total
+    diff_df = diff_df - diff_df.mean()
+
+    t = ('Normalised RMSE (cm): '+
+         str( round(np.sqrt( (diff_df**2).sum() ) / len(diff_df), 2 ))+ '\n' +
+         'Normalised AR (cm): '+
+         str( round( np.abs(diff_df).sum() / len(diff_df),2)))
+    ax[0,1].text(1.0, 1.0, t, ha='right', va='top', transform=ax[0,1].transAxes)
+    ax[0,1].set_title('Difference observations - budget')
+    ax[0,1].grid(True)
+    #diff_df = diff_df.rolling( 3, center=True).mean() # Add a running average (keep after diagnostics)
+    ax[0,1].plot(diff_df)
+
+    if not separate_global_steric:
+        ### Plot the trend and acceleration budget
+        lin_trend = np.polyfit(slmean_df.index, slmean_df * 10, 1)[0,:]  # Convert from cm to mm
+        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=slmean_df.columns)
+
+        acceleration = 2 * np.polyfit(slmean_df.index, slmean_df * 10, 2)[0,:] *100 # Convert from cm^2 / year to mm^2 / year
+        stat_df['Acceleration'] = acceleration
+
+        colors = ['red', 'blue', 'green', 'brown', 'magenta', 'grey', 'orange', 'black', 'cyan', 'yellow']
+        ind = np.arange(len(slmean_df.columns) - 1 )
+
+        legend_elements = []
+        for i in ind:
+            legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, label = slmean_df.columns[i]))
+    else:
+        # Study the trend and acceleration budget
+        # split local and global steric effects
+        sl_g_df = slmean_df.copy()
+        sl_g_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
+        sl_g_df['Steric'] = sl_g_df['Steric'] - sl_g_df['GloSteric']
+        sl_g_df = sl_g_df.rename(columns={'Steric': 'LocSteric'})
+        # Rearange the columns for plotting
+        cols = sl_g_df.columns.tolist()
+        cols = cols[0:2] + cols[-1:] + cols[2:-1]
+        sl_g_df = sl_g_df[cols]
+        
+        ### Plot the trend and acceleration budget separating global and regional steric effects
+        lin_trend = np.polyfit(sl_g_df.index, sl_g_df * 10, 1)[0,:]  
+        # Converted from cm to mm
+        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=sl_g_df.columns)
+
+        acceleration = 2 * np.polyfit(sl_g_df.index, sl_g_df * 10, 2)[0,:] * 100
+        # Convert from cm / year^2 to mm / year^2
+        stat_df['Acceleration'] = acceleration
+
+        colors = ['red', 'blue', 'purple', 'green', 'brown', 'magenta', 'grey', 
+                  'orange', 'black', 'cyan', 'olive']
+        ind = np.arange(len(sl_g_df.columns) - 1 )
+
+        legend_elements = []
+        for i in ind:
+            legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, 
+                                          label = sl_g_df.columns[i]))
+
+    legend_elements.append(Line2D([0], [0], color = 'black', lw = 2, 
+                                  label = 'tg obs'))
+    ax[1,0].set_title('Linear trend budget')
+    ax[1,0].bar(ind, lin_trend[:-1], color=colors)
+    ax[1,0].hlines(y=lin_trend[-1], xmin=-0.5, xmax=0.5, color='black')
+    ax[1,0].set_ylabel('Linear trend (mm/year)')
+
+    ax[1,1].set_title('Acceleration budget')
+    ax[1,1].bar(ind, acceleration[:-1], color=colors)
+    ax[1,1].hlines(y=acceleration[-1], xmin=-0.5, xmax=0.5, color='black')
+    ax[1,1].set_ylabel('Acceleration ($10^{-2} mm/year^2$)')
+    ax[1,0].legend(handles=legend_elements, loc='upper right')
+
+    return fig, ax
