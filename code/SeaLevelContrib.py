@@ -111,15 +111,15 @@ def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_
     y = df['height']
     X = np.ones(len(t))
     names = ['Constant']
-    if with_nodal:
-        X = np.c_[ X, np.cos(2*np.pi*(t - 1970)/18.613), np.sin(2*np.pi*(t - 1970)/18.613)]
-        names.extend(['Nodal U', 'Nodal V'])
     if with_wind:
         X = np.c_[ X, df['u2'], df['v2']]
         names.extend(['Wind $u^2$', 'Wind $v^2$'])
     if with_pres:
         X = np.c_[X, df['pres']]
         names.extend(['Pressure'])
+    if with_nodal:
+        X = np.c_[ X, np.cos(2*np.pi*(t - 1970)/18.613), np.sin(2*np.pi*(t - 1970)/18.613)]
+        names.extend(['Nodal U', 'Nodal V'])
     if with_trend:
         X = np.c_[X, t - 1970 ]
         names.extend(['Trend'])
@@ -130,23 +130,26 @@ def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_
     fit = model.fit(cov_type='HC0')
     return fit, names
 
-def make_wpn_ef(tg_id, tgm_df, with_trend, product):
+def make_wpn_ef(tg_id, tgm_df, with_nodal, with_trend, product):
     for i in range( len(tg_id)):
         tg_lat, tg_lon = tg_lat_lon(tg_id[i])
         annual_wind_df = make_wind_df(tg_lat, tg_lon, product)
         df_c = tgm_df.join(annual_wind_df, how='inner')
         df_c.index.names = ['year']
-        linear_fit, names = linear_model_zsm(df_c, with_trend, with_nodal=True, 
+        linear_fit, names = linear_model_zsm(df_c, with_trend, with_nodal, 
                                              with_wind=True, with_pres=True, with_ar=False)
         time_y = df_c.index
         mod = np.array(linear_fit.params[:]) * np.array(linear_fit.model.exog[:,:])
-        n_ef = mod[:,[1,2]].sum(axis=1)
-        w_ef = mod[:,[3,4]].sum(axis=1)
-        p_ef = mod[:,5]
+        w_ef = mod[:,[1,2]].sum(axis=1)
+        p_ef = mod[:,3]
+        if with_nodal:
+            n_ef = mod[:,[4,5]].sum(axis=1)
+            
         if i==0:
-            n_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=n_ef))
-            n_ef_df = n_ef_df.set_index('time')
-            n_ef_df.columns  = [str(tg_id[i])] 
+            if with_nodal:
+                n_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=n_ef))
+                n_ef_df = n_ef_df.set_index('time')
+                n_ef_df.columns  = [str(tg_id[i])] 
             w_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=w_ef))
             w_ef_df = w_ef_df.set_index('time')
             w_ef_df.columns  = [str(tg_id[i])]
@@ -154,12 +157,16 @@ def make_wpn_ef(tg_id, tgm_df, with_trend, product):
             p_ef_df = p_ef_df.set_index('time')
             p_ef_df.columns  = [str(tg_id[i])]
         else:
-            n_ef_df[str(tg_id[i])] = n_ef
+            if with_nodal:
+                n_ef_df[str(tg_id[i])] = n_ef
             w_ef_df[str(tg_id[i])] = w_ef
             p_ef_df[str(tg_id[i])] = p_ef
-            
-    wpn_ef_df = pd.DataFrame(data=dict(time=time_y, Nodal=n_ef_df.mean(axis=1), 
-                                       Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
+    if with_nodal:
+        wpn_ef_df = pd.DataFrame(data=dict(time=time_y, Nodal=n_ef_df.mean(axis=1), 
+                        Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
+    else:
+        wpn_ef_df = pd.DataFrame(data=dict(time=time_y, 
+                Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
     wpn_ef_df = wpn_ef_df.set_index('time')
     return wpn_ef_df
 
@@ -716,8 +723,20 @@ def GloSLDang19():
     GloSLDang19_df.index.names = ['time']
     return GloSLDang19_df / 10 # Convert from mm to cm
 
+def nodal_tides_potential(lat, time_years):
+    h2 = 0.6032
+    k2 = 0.298
+
+    #nodal cycle correction
+    A = 0.44*(1+k2-h2)*20*(3*np.sin(lat*np.pi/180.)**2-1)/10  # mm to cm
+    nodcyc = A*np.cos((2*np.pi*(time_years-1922.7))/18.61 + np.pi)
+    
+    nodcyc_df = pd.DataFrame(data={'time': time_years, 'Nodal': nodcyc})
+    nodcyc_df = nodcyc_df.set_index('time')
+    return nodcyc_df
+
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
-                 opt_greenland, opt_tws, opt_wind_ibe, avg):
+                 opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
     tg_df = tide_gauge_obs(tg_id, interp=True)
@@ -738,7 +757,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             print('ERROR: option for opt_glaciers undefined')
 
         if opt_antarctica == 'imbie18':
-            ant_df = ant_imbie18(extrap=True) * ices_fp(tg_id, 'mit_unif', 
+            ant_df = ant_imbie18(extrap=True) * ices_fp([tg_id[i]], 'mit_unif', 
                                                                   'ant')
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
@@ -751,15 +770,25 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df = steric_df
         sealevel_df = sealevel_df.join([gia_ts_df, glac_ts_df, ant_df, green_df, 
                                         tws_df], how='inner')
+        if opt_nodal == 'potential':
+            tg_lat, tg_lon = tg_lat_lon(tg_id[i])
+            nodal_df = nodal_tides_potential(tg_lat, sealevel_df.index)
+            sealevel_df = sealevel_df.join(nodal_df)
+            with_nodal = False
+        elif opt_nodal == 'regression':
+            with_nodal = True
+        else:
+            print('ERROR: option opt_nodal undefined:'+str(opt_nodal))
+        
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
             diff_tg_df = tg_df.Average - sealevel_df.Total
             diff_tg_df = diff_tg_df.to_frame(name='height').dropna()
-            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_tg_df, with_trend=False, 
-                                    product=opt_wind_ibe[1])
+            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_tg_df, with_nodal, 
+                                    with_trend=False, product=opt_wind_ibe[1])
         elif opt_wind_ibe[0] == 'dynamical_model':
-            print('!!! This option does not include nodal cycle')
+            print('!!! This option does not include a nodal cycle')
             if opt_wind_ibe[1] == 'WAQUA':
                 wpn_ef_df = make_waqua_df(tg_id[i])
             else:
