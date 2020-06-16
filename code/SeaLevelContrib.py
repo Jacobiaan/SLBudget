@@ -738,7 +738,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             print('ERROR: option for opt_glaciers undefined')
 
         if opt_antarctica == 'imbie18':
-            ant_df = ant_imbie_glo(extrap=True) * ices_fp(tg_id, 'mit_unif', 
+            ant_df = ant_imbie18(extrap=True) * ices_fp(tg_id, 'mit_unif', 
                                                                   'ant')
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
@@ -809,7 +809,7 @@ def plot_budget(tg_sel, slmean_df, separate_global_steric):
 
     t = ('Normalised RMSE (cm): '+
          str( round(np.sqrt( (diff_df**2).sum() ) / len(diff_df), 2 ))+ '\n' +
-         'Normalised AR (cm): '+
+         'Normalised AE (cm): '+
          str( round( np.abs(diff_df).sum() / len(diff_df),2)))
     ax[0,1].text(1.0, 1.0, t, ha='right', va='top', transform=ax[0,1].transAxes)
     ax[0,1].set_title('Difference observations - budget')
