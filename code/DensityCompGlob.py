@@ -11,8 +11,7 @@ import gsw
 
 Dir = '/Volumes/Elements/Data/EN4/netcdf_EN.4.2.1.analyses.g10/'
 
-# Choose the area and time of interest
-lat_min, lat_max, lon_min, lon_max = 30, 70, -20, 20
+# Choose the time of interest
 year_min, year_max = 1900, 2019
 
 for year in range(year_min, year_max):
