@@ -59,8 +59,8 @@ for year in range(year_min, year_max):
     
     rho   = xr.DataArray(rho, coords=[ temp.lat, temp.lon, temp.depth_std], \
                     dims=['lat', 'lon', 'depth'], name='density', attrs=rho_at)
-
     rho = rho.transpose('depth', 'lat', 'lon')
+    rho = rho.expand_dims({'time':[year]}, axis=0)
     
     rho.to_netcdf(Dir_out+'density_teos10_iap_'+ str(year) + '.nc')
 

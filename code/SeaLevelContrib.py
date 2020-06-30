@@ -229,7 +229,9 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
 
 def steric_masks_north_sea(da, mask_name):
     '''Define a few masks to use to compute the steric expansion that is felt 
-    in the North Sea'''
+    in the North Sea.
+    The input data array needs to have a latitude/longitude coordinates with
+    longitudes from -180 to 180.'''
     if mask_name == 'ENS':
         # Extended North Sea mask
         lat = np.array(da.lat)
@@ -282,7 +284,7 @@ def steric_masks_north_sea(da, mask_name):
 
 def StericSL_EN4(max_depth, mask_name):
     '''Compute the steric effect in the North Sea in cm integrated from the 
-    surface up to a given depth given in meters. '''
+    surface down to a given depth given in meters. '''
     DENS = xr.open_dataset(PATH_SLBudgets_data + 
                            'DataSteric/density_teos10_EN421f_analysis_g10/' + 
                            'density_teos10_en4_1900_2019.nc')
@@ -305,6 +307,37 @@ def StericSL_EN4(max_depth, mask_name):
     del StericSL_NS_df['depth']
     return StericSL_NS_df
 
+def thickness_from_depth(depth):
+    '''Define a thickness Data Array from depth coordinate'''
+    midp = (np.array(depth[1:])+np.array(depth[:-1]))/2
+    midp = np.insert(midp, 0, np.array([0]))
+    midp = np.insert(midp, len(midp), np.array(depth[-1]) + 
+                     (np.array(depth[-1]) - np.array(depth[-2])))
+    thick = midp[1:] - midp[:-1]
+    thick_da = xr.DataArray(thick, coords={'depth': depth[:]}, dims='depth')
+    return thick_da
+    
+def StericSL(max_depth, mask_name, data_source):
+    '''Compute the steric sea level in cm integrated from the surface down to a 
+    given depth given in meters. '''
+    if data_source == 'IAP':
+        density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
+                        'DataSteric/density_teos10_IAP/density_teos10_iap_*.nc')
+    else:
+        print('ERROR: data_source not defined')
+    
+    midp = (np.array(DENS.depth[1:])+np.array(DENS.depth[:-1]))/2
+    midp = np.insert(midp, 0, np.array([0]))
+    midp = np.insert(midp, len(midp), np.array(DENS.depth[-1]) + 
+                     (np.array(DENS.depth[-1]) - np.array(DENS.depth[-2])))
+    thick = midp[1:] - midp[:-1]
+    thick = xr.DataArray(thick, coords={'depth': DENS.depth[:]}, dims='depth')
+    SumDens = DENS.density * thick
+
+    mask = steric_masks_north_sea(DENS.density, mask_name)
+    
+    return StericSL_df
+    
 def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     '''Read the current GIA 250kaBP-250kaAP from the ICE6G model and output a
     time series in a pandas dataframe format'''
