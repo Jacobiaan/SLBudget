@@ -326,16 +326,19 @@ def StericSL(max_depth, mask_name, data_source):
     else:
         print('ERROR: data_source not defined')
     
-    midp = (np.array(DENS.depth[1:])+np.array(DENS.depth[:-1]))/2
-    midp = np.insert(midp, 0, np.array([0]))
-    midp = np.insert(midp, len(midp), np.array(DENS.depth[-1]) + 
-                     (np.array(DENS.depth[-1]) - np.array(DENS.depth[-2])))
-    thick = midp[1:] - midp[:-1]
-    thick = xr.DataArray(thick, coords={'depth': DENS.depth[:]}, dims='depth')
-    SumDens = DENS.density * thick
+    thick_da = thickness_from_depth(density_ds.depth)
+    SumDens = density_ds.density * thick_da
 
-    mask = steric_masks_north_sea(DENS.density, mask_name)
+    mask = steric_masks_north_sea(density_ds.density, mask_name)
     
+    SumDens = (SumDens * mask).mean(dim=['lat', 'lon'])
+    rho_0 = (density_ds.density[0 ,0 ,: ,:] * mask).mean(dim=['lat', 'lon'])
+    StericSL = (- SumDens.sel(depth=slice(0,max_depth)).sum(dim='depth') 
+                / rho_0) * 100
+    StericSL = StericSL - StericSL.sel(time=slice(1940,1960)).mean(dim='time')
+    StericSL.name = 'Steric'
+    StericSL_df = StericSL.to_dataframe()
+    del StericSL_df['depth']
     return StericSL_df
     
 def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
@@ -775,6 +778,9 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] == 'EN4':
         steric_df = StericSL_EN4(max_depth=opt_steric[2], mask_name=opt_steric[1])
+    elif opt_steric[0] == 'IAP':
+        steric_df = StericSL(max_depth=opt_steric[2], mask_name=opt_steric[1], 
+                             data_source='IAP')
     else:
         print('ERROR: option for opt_steric[0] undefined')
 
