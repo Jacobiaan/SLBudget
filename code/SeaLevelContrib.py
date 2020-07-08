@@ -11,6 +11,9 @@ import xesmf as xe
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+from IPython.display import set_matplotlib_formats
+set_matplotlib_formats('retina')
+
 PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
 PATH_Data = '/Users/dewilebars/Data/'
 
@@ -772,7 +775,8 @@ def nodal_tides_potential(lat, time_years):
     return nodcyc_df
 
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
-                 opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, avg):
+                 opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
+                 separate_global_steric, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
     tg_df = tide_gauge_obs(tg_id, interp=True)
@@ -841,7 +845,18 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()
         sealevel_df.index.name = 'time'
         sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
+        
+        if separate_global_steric:  # split local and global steric effects
+            sealevel_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
+            sealevel_df['Steric'] = sealevel_df['Steric'] - sealevel_df['GloSteric']
+            sealevel_df = sealevel_df.rename(columns={'Steric': 'LocSteric'})
+            # Rearange the columns
+            cols = sealevel_df.columns.tolist()
+            cols = cols[0:2] + cols[-1:] + cols[2:-1]
+            sealevel_df = sealevel_df[cols]
+        
         sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(tg_id[i])])
+        
         if i==0:
             slall_df = sealevel_df.copy()
         else:
@@ -856,7 +871,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
 
     return slall_df
 
-def plot_budget(tg_sel, slmean_df, separate_global_steric):
+def plot_budget(tg_sel, slmean_df):
     '''Summary plot of the sea level budget. Should be split in smaller functions.'''
     ### Plot compaison between tide gauge observations and budget
     fig, ax = plt.subplots(2, 2, figsize=(9,9), gridspec_kw={'height_ratios': [1, 1]})
@@ -885,7 +900,7 @@ def plot_budget(tg_sel, slmean_df, separate_global_steric):
     #diff_df = diff_df.rolling( 3, center=True).mean() # Add a running average (keep after diagnostics)
     ax[0,1].plot(diff_df)
 
-    if not separate_global_steric:
+    if 'Steric' in slmean_df.columns:
         ### Plot the trend and acceleration budget
         lin_trend = np.polyfit(slmean_df.index, slmean_df * 10, 1)[0,:]  # Convert from cm to mm
         stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=slmean_df.columns)
@@ -899,35 +914,24 @@ def plot_budget(tg_sel, slmean_df, separate_global_steric):
         legend_elements = []
         for i in ind:
             legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, label = slmean_df.columns[i]))
-    else:
-        # Study the trend and acceleration budget
-        # split local and global steric effects
-        sl_g_df = slmean_df.copy()
-        sl_g_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
-        sl_g_df['Steric'] = sl_g_df['Steric'] - sl_g_df['GloSteric']
-        sl_g_df = sl_g_df.rename(columns={'Steric': 'LocSteric'})
-        # Rearange the columns for plotting
-        cols = sl_g_df.columns.tolist()
-        cols = cols[0:2] + cols[-1:] + cols[2:-1]
-        sl_g_df = sl_g_df[cols]
-        
+    else:  
         ### Plot the trend and acceleration budget separating global and regional steric effects
-        lin_trend = np.polyfit(sl_g_df.index, sl_g_df * 10, 1)[0,:]  
+        lin_trend = np.polyfit(slmean_df.index, slmean_df * 10, 1)[0,:]  
         # Converted from cm to mm
-        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=sl_g_df.columns)
+        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=slmean_df.columns)
 
-        acceleration = 2 * np.polyfit(sl_g_df.index, sl_g_df * 10, 2)[0,:] * 100
+        acceleration = 2 * np.polyfit(slmean_df.index, slmean_df * 10, 2)[0,:] * 100
         # Convert from cm / year^2 to mm / year^2
         stat_df['Acceleration'] = acceleration
 
         colors = ['red', 'blue', 'purple', 'green', 'brown', 'magenta', 'grey', 
                   'orange', 'black', 'cyan', 'olive']
-        ind = np.arange(len(sl_g_df.columns) - 1 )
+        ind = np.arange(len(slmean_df.columns) - 1 )
 
         legend_elements = []
         for i in ind:
             legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, 
-                                          label = sl_g_df.columns[i]))
+                                          label = slmean_df.columns[i]))
 
     legend_elements.append(Line2D([0], [0], color = 'black', lw = 2, 
                                   label = 'tg obs'))
