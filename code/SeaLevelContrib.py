@@ -715,7 +715,7 @@ def LevitusSL(reg = 'Global', extrap_back = False, extrap=False):
     Global is implemented.
     Possibility to extrapolate the time series to 1950 using the trend of the first 
     20 years with extrap_back.
-    Possibility to extrapolate the time series forward up to 2019 using the trend of 
+    Possibility to extrapolate the time series forward up to 2020 using the trend of 
     the last 5 years'''
     Dir_LEV = PATH_Data + 'NOAA/'
     Lev_ds = xr.open_dataset(Dir_LEV + \
