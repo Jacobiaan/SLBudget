@@ -774,11 +774,47 @@ def nodal_tides_potential(lat, time_years):
     nodcyc_df = nodcyc_df.set_index('time')
     return nodcyc_df
 
+def contrib_frederikse2020(tg_id, var):
+    '''
+    Read values from Frederikse et al. 2020 budget.
+    
+    Inputs: 
+    List of tide gauges
+    Variable (available: tws, AIS, glac, GrIS, steric)
+    
+    Outputs:
+    Dataframe giving the average contribution at the tide gauges
+    '''    
+    
+    data_dir = '../data/Frederikse2020/'
+    ds = xr.open_dataset(f'{data_dir}{var}.nc')
+    # Fill coastal points to avoid selecting NaN
+    sel_da = ds[f'{var}_rsl_mean'].ffill('lon', 3).bfill('lon', 3)
+    sel_da = sel_da/10 # Convert from mm to cm
+    
+    for i in range(len(tg_id)):
+        tg_lat, tg_lon =  tg_lat_lon([tg_id[i]])
+        loc_da = sel_da.sel(lon = tg_lon.values, lat = tg_lat.values, 
+                            method = 'nearest')
+        if i == 0:
+            loc_da.name = f'{tg_id[i]}'
+            df = loc_da.squeeze().reset_coords(drop=True).to_dataframe()
+        else:
+            df[f'{tg_id[i]}'] = loc_da.squeeze().values
+
+    fr_name = {'tws' : 'TWS', 
+               'AIS' : 'Antarctica', 
+               'GrIS' : 'Greenland', 
+               'glac' : 'Glaciers'}
+    
+    return df.mean(axis=1).to_frame(fr_name[var])
+
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
                  separate_global_steric, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
+    
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] == 'EN4':
         steric_df = StericSL_EN4(max_depth=opt_steric[2], mask_name=opt_steric[1])
@@ -804,12 +840,18 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
                                                                   'ant')
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
+        elif opt_antarctica == 'fred20':
+            ant_df = contrib_frederikse2020(tg_id, 'AIS')
         else:
             print('ERROR: option for opt_antarctica undefined')
 
         green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 'mit_unif', 
                                                             'green')
-        tws_df = tws_glo_humphrey19(extrap=True)
+        if opt_tws == 'humphrey19':
+            tws_df = tws_glo_humphrey19(extrap=True)
+        elif opt_tws == 'fred20':
+            tws_df = contrib_frederikse2020(tg_id, 'tws')
+            
         sealevel_df = steric_df
         sealevel_df = sealevel_df.join([gia_ts_df, glac_ts_df, ant_df, green_df, 
                                         tws_df], how='inner')
