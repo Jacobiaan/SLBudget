@@ -285,31 +285,6 @@ def steric_masks_north_sea(da, mask_name):
     del mask['time']
     return mask
 
-def StericSL_EN4(max_depth, mask_name):
-    '''Compute the steric effect in the North Sea in cm integrated from the 
-    surface down to a given depth given in meters. '''
-    DENS = xr.open_dataset(PATH_SLBudgets_data + 
-                           'DataSteric/density_teos10_EN421f_analysis_g10/' + 
-                           'density_teos10_en4_1900_2019.nc')
-    midp = (np.array(DENS.depth[1:])+np.array(DENS.depth[:-1]))/2
-    midp = np.insert(midp, 0, np.array([0]))
-    midp = np.insert(midp, len(midp), np.array(DENS.depth[-1]) + 
-                     (np.array(DENS.depth[-1]) - np.array(DENS.depth[-2])))
-    thick = midp[1:] - midp[:-1]
-    thick = xr.DataArray(thick, coords={'depth': DENS.depth[:]}, dims='depth')
-    SumDens = DENS.density * thick
-
-    mask = steric_masks_north_sea(DENS.density, mask_name)
-    
-    SumDens_NS = (SumDens * mask).mean(dim=['lat', 'lon'])
-    StericSL_NS = (- SumDens_NS.sel(depth=slice(0,max_depth)).sum(dim='depth') 
-                   / (DENS.density[0 ,0 ,: ,:] * mask).mean(dim=['lat', 'lon'])) * 100
-    StericSL_NS = StericSL_NS - StericSL_NS.sel(time=slice(1940,1960)).mean(dim='time')
-    StericSL_NS.name = 'Steric'
-    StericSL_NS_df = StericSL_NS.to_dataframe()
-    del StericSL_NS_df['depth']
-    return StericSL_NS_df
-
 def thickness_from_depth(depth):
     '''Define a thickness Data Array from depth coordinate'''
     midp = (np.array(depth[1:])+np.array(depth[:-1]))/2
@@ -326,6 +301,10 @@ def StericSL(max_depth, mask_name, data_source):
     if data_source == 'IAP':
         density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
                         'DataSteric/density_teos10_IAP/density_teos10_iap_*.nc')
+    elif data_source == 'EN4':
+        density_ds = xr.open_dataset(PATH_SLBudgets_data + 
+                       'DataSteric/density_teos10_EN421f_analysis_g10/' + 
+                       'density_teos10_en4_1900_2019.nc')
     else:
         print('ERROR: data_source not defined')
     
@@ -819,11 +798,9 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
     avg (boolean): Compute the average budget over the list of tide gauges'''
     
     tg_df = tide_gauge_obs(tg_id, interp=True)
-    if opt_steric[0] == 'EN4':
-        steric_df = StericSL_EN4(max_depth=opt_steric[2], mask_name=opt_steric[1])
-    elif opt_steric[0] == 'IAP':
+    if opt_steric[0] in ['EN4', 'IAP']:
         steric_df = StericSL(max_depth=opt_steric[2], mask_name=opt_steric[1], 
-                             data_source='IAP')
+                             data_source=opt_steric[0])
     else:
         print('ERROR: option for opt_steric[0] undefined')
 
