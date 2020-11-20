@@ -658,7 +658,9 @@ def green_mouginot19_glo():
     return mo_df
 
 def TWS_loc(tg_id):
-    '''Read TWS effect on relative sea level derived from GRACE from a file given by Thomas Frederikse.'''
+    '''Read TWS effect on relative sea level derived from GRACE from a file 
+    given by Thomas Frederikse.'''
+    
     dir_fpg = PATH_SLBudgets_data + 'fp_grace/'
     fpg_ds1 = xr.open_dataset(dir_fpg + 'sle_results.nc')
     fpg_ds = xr.open_dataset(dir_fpg + 'sle_results.nc', group='TWS/rsl/')
@@ -680,6 +682,7 @@ def TWS_loc(tg_id):
     TWS_df = grouped.mean()
     #TWS_df = TWS_df.loc[TWS_df.index <= 2016 && TWS_df.index >= 2003]
     TWS_df = TWS_df.loc[2003:2016] # Exclude first and last year
+    
     return TWS_df / 10 # Convert from mm to cm
 
 def tws_glo_humphrey19(extrap=False):
@@ -832,6 +835,8 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             glac_ts_df = glaciers_m15([tg_id[i]], extrap=True, del_green=True)
         elif opt_glaciers == 'zemp19':
             glac_ts_df = glaciers_zemp19([tg_id[i]], extrap=True, del_green=True)
+        elif opt_glaciers == 'fred20':
+            glac_ts_df = contrib_frederikse2020([tg_id[i]], 'glac')
         else:
             print('ERROR: option for opt_glaciers undefined')
 
@@ -841,16 +846,22 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
         elif opt_antarctica == 'fred20':
-            ant_df = contrib_frederikse2020(tg_id, 'AIS')
+            ant_df = contrib_frederikse2020([tg_id[i]], 'AIS')
         else:
             print('ERROR: option for opt_antarctica undefined')
 
-        green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 'mit_unif', 
-                                                            'green')
+        if opt_greenland == 'mouginot19':
+            green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 
+                                                        'mit_unif', 'green')
+        elif opt_greenland == 'fred20':
+            green_df = contrib_frederikse2020([tg_id[i]], 'GrIS')
+        else:
+            print('ERROR: option for opt_greenland undefined')
+        
         if opt_tws == 'humphrey19':
             tws_df = tws_glo_humphrey19(extrap=True)
         elif opt_tws == 'fred20':
-            tws_df = contrib_frederikse2020(tg_id, 'tws')
+            tws_df = contrib_frederikse2020([tg_id[i]], 'tws')
             
         sealevel_df = steric_df
         sealevel_df = sealevel_df.join([gia_ts_df, glac_ts_df, ant_df, green_df, 
@@ -936,44 +947,35 @@ def plot_budget(tg_sel, slmean_df):
          str( round(np.sqrt( (diff_df**2).sum() ) / len(diff_df), 2 ))+ '\n' +
          'Normalised AE (cm): '+
          str( round( np.abs(diff_df).sum() / len(diff_df),2)))
-    ax[0,1].text(1.0, 1.0, t, ha='right', va='top', transform=ax[0,1].transAxes)
+    ax[0,1].text(0.98, 0.98, t, ha='right', va='top', transform=ax[0,1].transAxes)
     ax[0,1].set_title('Difference observations - budget')
     ax[0,1].grid(True)
-    #diff_df = diff_df.rolling( 3, center=True).mean() # Add a running average (keep after diagnostics)
+    # Optionnaly add a running average (keep after diagnostics)
+    #diff_df = diff_df.rolling( 3, center=True).mean()
     ax[0,1].plot(diff_df)
 
+    ### Plot the trend and acceleration budget
+    lin_trend = np.polyfit(slmean_df.index, 
+                           slmean_df * 10, 1)[0,:]  # Convert from cm to mm
+
+    acceleration = 2 * np.polyfit(slmean_df.index, slmean_df * 10, 2)[0,:]
+    # Convert from mm^2 / year to 10^-2 mm^2 / year
+    acceleration = acceleration * 100 
+    
     if 'Steric' in slmean_df.columns:
-        ### Plot the trend and acceleration budget
-        lin_trend = np.polyfit(slmean_df.index, slmean_df * 10, 1)[0,:]  # Convert from cm to mm
-        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=slmean_df.columns)
-
-        acceleration = 2 * np.polyfit(slmean_df.index, slmean_df * 10, 2)[0,:] *100 # Convert from cm^2 / year to mm^2 / year
-        stat_df['Acceleration'] = acceleration
-
-        colors = ['red', 'blue', 'green', 'brown', 'magenta', 'grey', 'orange', 'black', 'cyan', 'yellow']
-        ind = np.arange(len(slmean_df.columns) - 1 )
-
-        legend_elements = []
-        for i in ind:
-            legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, label = slmean_df.columns[i]))
+        colors = ['red', 'blue', 'green', 'brown', 'magenta', 'grey', 'orange', 
+                  'black', 'cyan', 'yellow']
+            
     else:  
-        ### Plot the trend and acceleration budget separating global and regional steric effects
-        lin_trend = np.polyfit(slmean_df.index, slmean_df * 10, 1)[0,:]  
-        # Converted from cm to mm
-        stat_df = pd.DataFrame(data = dict(Lin_trend = lin_trend), index=slmean_df.columns)
-
-        acceleration = 2 * np.polyfit(slmean_df.index, slmean_df * 10, 2)[0,:] * 100
-        # Convert from cm / year^2 to mm / year^2
-        stat_df['Acceleration'] = acceleration
-
         colors = ['red', 'blue', 'purple', 'green', 'brown', 'magenta', 'grey', 
                   'orange', 'black', 'cyan', 'olive']
-        ind = np.arange(len(slmean_df.columns) - 1 )
 
-        legend_elements = []
-        for i in ind:
-            legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, 
-                                          label = slmean_df.columns[i]))
+    ind = np.arange(len(slmean_df.columns) - 1 )
+
+    legend_elements = []
+    for i in ind:
+        legend_elements.append(Line2D([0], [0], color = colors[i], lw = 4, 
+                                      label = slmean_df.columns[i]))
 
     legend_elements.append(Line2D([0], [0], color = 'black', lw = 2, 
                                   label = 'tg obs'))
@@ -981,11 +983,23 @@ def plot_budget(tg_sel, slmean_df):
     ax[1,0].bar(ind, lin_trend[:-1], color=colors)
     ax[1,0].hlines(y=lin_trend[-1], xmin=-0.5, xmax=0.5, color='black')
     ax[1,0].set_ylabel('Linear trend (mm/year)')
+    ax[1,0].legend(handles=legend_elements, loc='upper right')
+    ax[1,0].text(0.02, 0.02, 
+                 f'Observed trend: {round(lin_trend[-1],2)}\n'+ 
+                 f'Budget trend: {round(lin_trend[0],2)}', 
+                 va='bottom', ha='left', 
+                 transform=ax[1,0].transAxes)
 
     ax[1,1].set_title('Acceleration budget')
     ax[1,1].bar(ind, acceleration[:-1], color=colors)
     ax[1,1].hlines(y=acceleration[-1], xmin=-0.5, xmax=0.5, color='black')
     ax[1,1].set_ylabel('Acceleration ($10^{-2} mm/year^2$)')
-    ax[1,0].legend(handles=legend_elements, loc='upper right')
-
+#     ax[1,1].text(5, 6, f'Observed acceleration: {round(acceleration[-1],2)}\n'+
+#            f'Budget acceleration: {round(acceleration[0],2)}')   
+    ax[1,1].text(0.98, 0.98, 
+                 f'Observed acceleration: {round(acceleration[-1],2)}\n'+ 
+                 f'Budget acceleration: {round(acceleration[0],2)}', 
+                 va='top', ha='right', 
+                 transform=ax[1,1].transAxes)
+    
     return fig, ax
