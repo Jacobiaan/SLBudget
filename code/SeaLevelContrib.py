@@ -791,9 +791,27 @@ def contrib_frederikse2020(tg_id, var):
     
     return df.mean(axis=1).to_frame(fr_name[var])
 
+def contrib_frederikse2020_glob(var):
+    '''
+    Read values from Frederikse et al. 2020 budget.
+    
+    Inputs:
+    variable (available: Steric, for other variables see excel sheet)
+    
+    Outputs:
+    Pandas dataframe of this variable with time in years as index
+    '''
+    
+    fts = pd.read_excel('../data/Frederikse2020/global_basin_timeseries.xlsx', sheet_name='Global')
+    fts = fts.rename(columns = {fts.columns[0]:'time'})
+    fts = fts.set_index('time')
+    fts = fts/10 # Convert from mm to cm
+    
+    return pd.DataFrame(fts[f'{var} [mean]'])
+
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
-                 separate_global_steric, avg):
+                 global_steric, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
     
@@ -876,8 +894,13 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df.index.name = 'time'
         sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
         
-        if separate_global_steric:  # split local and global steric effects
-            sealevel_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
+        if global_steric:  # split local and global steric effects
+            if global_steric == 'levitus':
+                sealevel_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
+            elif global_steric == 'fred20':
+                sealevel_df['GloSteric'] = contrib_frederikse2020_glob('Steric')
+            else:
+                print('ERROR: option for global_steric undefined')
             sealevel_df['Steric'] = sealevel_df['Steric'] - sealevel_df['GloSteric']
             sealevel_df = sealevel_df.rename(columns={'Steric': 'LocSteric'})
             # Rearange the columns
