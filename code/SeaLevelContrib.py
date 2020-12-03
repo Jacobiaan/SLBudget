@@ -711,22 +711,22 @@ def LevitusSL(reg = 'Global', extrap_back = False, extrap=False):
                                                         #1955 to years
     LevitusSL['time'] = LevitusSL.time.astype(int)
     LevitusSL_df = LevitusSL.to_dataframe()
-    LevitusSL_df.rename(columns={'pent_s_mm_WO': 'StericLevitus'}, inplace=True)
+    LevitusSL_df.rename(columns={'pent_s_mm_WO': 'GloSteric'}, inplace=True)
     if extrap_back:
         nby = 20
         trend = np.polyfit(LevitusSL_df.index[:nby], \
-                           LevitusSL_df.StericLevitus.iloc[:nby], 1)[0]
+                           LevitusSL_df.GloSteric.iloc[:nby], 1)[0]
         for i in range(7):
             LevitusSL_df.loc[LevitusSL_df.index.min() - 1] = \
-            ( LevitusSL_df.StericLevitus.loc[LevitusSL_df.index.min()] - trend )
+            ( LevitusSL_df.GloSteric.loc[LevitusSL_df.index.min()] - trend )
         LevitusSL_df.sort_index(inplace=True)
     if extrap:
         nby = 5
         trend = np.polyfit(LevitusSL_df.index[-nby:], \
-                           LevitusSL_df.StericLevitus.iloc[-nby:], 1)[0]
+                           LevitusSL_df.GloSteric.iloc[-nby:], 1)[0]
         for i in range(3):
             LevitusSL_df.loc[LevitusSL_df.index.max() + 1] = \
-            ( LevitusSL_df.StericLevitus.loc[LevitusSL_df.index.max()] + trend )
+            ( LevitusSL_df.GloSteric.loc[LevitusSL_df.index.max()] + trend )
     return LevitusSL_df
 
 def GloSLDang19():
@@ -806,8 +806,11 @@ def contrib_frederikse2020_glob(var):
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
     fts = fts/10 # Convert from mm to cm
+    output_df = pd.DataFrame(fts[f'{var} [mean]'])
+    if var == 'Steric':
+        output_df = output_df.rename(columns = {'Steric [mean]':'GloSteric'})
     
-    return pd.DataFrame(fts[f'{var} [mean]'])
+    return output_df
 
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
@@ -817,11 +820,25 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
     
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] in ['EN4', 'IAP']:
-        steric_df = StericSL(max_depth=opt_steric[2], mask_name=opt_steric[1], 
+        loc_steric_df = StericSL(max_depth=opt_steric[2], mask_name=opt_steric[1], 
                              data_source=opt_steric[0])
     else:
         print('ERROR: option for opt_steric[0] undefined')
 
+    steric_df = loc_steric_df
+    
+    if global_steric:  # split local and global steric effects
+        if global_steric == 'levitus':
+            glo_steric_df =  LevitusSL(extrap=True, extrap_back=True)
+        elif global_steric == 'fred20':
+            glo_steric_df = contrib_frederikse2020_glob('Steric')
+        else:
+            print('ERROR: option for global_steric undefined')
+        
+        steric_df = steric_df.join(glo_steric_df)
+        steric_df = steric_df.rename(columns={'Steric': 'LocSteric'})
+        steric_df['LocSteric'] = steric_df['LocSteric'] - steric_df['GloSteric']
+        
     for i in range(len(tg_id)):
         print('Working on tide gauge id: '+ str(tg_id[i]))
         gia_ts_df = GIA_ICE6G([tg_id[i]])
@@ -857,10 +874,11 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             tws_df = tws_glo_humphrey19(extrap=True)
         elif opt_tws == 'fred20':
             tws_df = contrib_frederikse2020([tg_id[i]], 'tws')
-            
-        sealevel_df = steric_df
-        sealevel_df = sealevel_df.join([gia_ts_df, glac_ts_df, ant_df, green_df, 
-                                        tws_df], how='inner')
+        
+        sealevel_df = steric_df.copy()
+        sealevel_df = sealevel_df.join([ gia_ts_df, glac_ts_df, 
+                                        ant_df, green_df, tws_df], how='inner')
+        
         if opt_nodal == 'potential':
             tg_lat, tg_lon = tg_lat_lon(tg_id[i])
             nodal_df = nodal_tides_potential(tg_lat, sealevel_df.index)
@@ -893,21 +911,6 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()
         sealevel_df.index.name = 'time'
         sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
-        
-        if global_steric:  # split local and global steric effects
-            if global_steric == 'levitus':
-                sealevel_df['GloSteric'] =  LevitusSL(extrap=True, extrap_back=True)
-            elif global_steric == 'fred20':
-                sealevel_df['GloSteric'] = contrib_frederikse2020_glob('Steric')
-            else:
-                print('ERROR: option for global_steric undefined')
-            sealevel_df['Steric'] = sealevel_df['Steric'] - sealevel_df['GloSteric']
-            sealevel_df = sealevel_df.rename(columns={'Steric': 'LocSteric'})
-            # Rearange the columns
-            cols = sealevel_df.columns.tolist()
-            cols = cols[0:2] + cols[-1:] + cols[2:-1]
-            sealevel_df = sealevel_df[cols]
-        
         sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(tg_id[i])])
         
         if i==0:
