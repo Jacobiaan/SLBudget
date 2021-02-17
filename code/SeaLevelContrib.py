@@ -190,11 +190,37 @@ def make_waqua_df(tg_id):
     t_wa = netCDF4.num2date(time_wa, ds_wa.variables['time'].units)
 
     t_wa_y = np.empty_like(t_wa)
+    
     for i in range(len(t_wa)):
         t_wa_y[i] = t_wa[i].year
-    waqua_df = pd.DataFrame( data = dict( time=t_wa_y, sealevel=dh.data) )
+        
+    waqua_df = pd.DataFrame( data = dict( time=t_wa_y, WindPressure=dh.data) )
     waqua_df = waqua_df.set_index('time')
+    
     return waqua_df
+
+def make_gtsm_df(tg_id, var):
+    ''' 
+    Read GTSM yearly averaged data and return a dataframe.
+    var: waterlevel, surge 
+    '''
+    gtsm_df = pd.read_csv('../data/GTSM_yearly/reanalysis_mean_nl.csv', index_col=0, parse_dates=['time'])
+    # Change column names to the tide gauge IDs
+    stations = [25, 32, 20, 24, 23, 22]
+    gtsm_df.columns = stations + list(gtsm_df.columns[-3:])
+    gtsm_df['year'] = gtsm_df.time.dt.year
+    
+    df = gtsm_df.query(f'variable == "{var}"').sort_values('time')
+    del(df['time'])
+    df.rename(columns={'year':'time'}, inplace=True)
+    df = df.groupby('time').agg('mean').reset_index()
+    df.set_index('time', inplace=True)
+
+    df = df*100 # Convert from m to cm
+    df = df[[tg_id]]
+    df.rename(columns={tg_id:'WindPressure'}, inplace=True)
+    
+    return df
 
 def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     '''Read a list of tide gauge data and compute the average. 
@@ -897,9 +923,10 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             wpn_ef_df = make_wpn_ef([tg_id[i]], diff_tg_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
         elif opt_wind_ibe[0] == 'dynamical_model':
-            print('!!! This option does not include a nodal cycle')
             if opt_wind_ibe[1] == 'WAQUA':
                 wpn_ef_df = make_waqua_df(tg_id[i])
+            elif opt_wind_ibe[1] == 'GTSM':
+                wpn_ef_df = make_gtsm_df(tg_id[i], 'surge')
             else:
                 print('ERROR: option for opt_wind_ibe[1] undefined')
         else:
