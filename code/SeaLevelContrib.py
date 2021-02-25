@@ -183,7 +183,8 @@ def make_waqua_df(tg_id):
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
-    tgn = filelist_df.name[tg_id].replace(' ', '').lower()[:8]
+    tgn = filelist_df.name[tg_id].replace('-', '').replace(' ', '')
+    tgn = tgn.lower()[:8]
     
     dh = ds_wa[tgn + '/WAQUA_surge'][:]*100
     time_wa = ds_wa['time'][:]
@@ -949,7 +950,6 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         slmean_df = slall_df.groupby(level=1, axis=1, sort=False).mean()
         slmean_df = slmean_df.join(tg_df.Average, how='inner')
         slmean_df = slmean_df.rename(columns={'Average': 'Obs'})
-        slmean_df['Obs'] = slmean_df['Obs'] - slmean_df['Obs'].iloc[0]
         slall_df = slmean_df
 
     return slall_df
