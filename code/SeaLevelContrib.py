@@ -226,11 +226,12 @@ def make_gtsm_df(tg_id, var):
 def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     '''Read a list of tide gauge data and compute the average. 
     Set interp to True for a linear interpollation of missing values.
-    By default use the 6 tide gauges from the zeespiegelmonitor''' 
+    By default use the 6 tide gauges from the Zeespiegelmonitor''' 
     
     tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
-    filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
+    filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', 
+                              header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
 
     names_col2 = ('time', 'height', 'interpolated', 'flags')
@@ -243,19 +244,20 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
         tg_data.height = tg_data.height - tg_data.height.mean()
 
         if i==0:
-            tg_data_df = pd.DataFrame(data=dict(time=tg_data.index, col_name=tg_data.height))
+            tg_data_df = pd.DataFrame(data=dict(time=tg_data.index, 
+                                                col_name=tg_data.height))
             tg_data_df = tg_data_df.set_index('time')
             tg_data_df.columns  = [str(tg_id[i])] 
         else:
             tg_data_df[str(tg_id[i])] = tg_data.height
 
-    #tg_data_df = tg_data_df[tg_data_df.index >= 1890].copy()
-    # 1890 is to follow the choice of the zeespiegelmonitor
-    # Alternatively use 1948 to fit with NCEP1 starting date
     if interp:
         tg_data_df = tg_data_df.interpolate(method='slinear')
+        
     tg_data_df['Average'] = tg_data_df.mean(axis=1)
-    return tg_data_df * 0.1 # Convert from mm to cm
+    tg_data_df = tg_data_df * 0.1 # Convert from mm to cm
+    
+    return tg_data_df
 
 def steric_masks_north_sea(da, mask_name):
     '''Define a few masks to use to compute the steric expansion that is felt 
@@ -795,7 +797,7 @@ def contrib_frederikse2020(tg_id, var):
     Dataframe giving the average contribution at the tide gauges
     '''    
     
-    data_dir = '../data/Frederikse2020/'
+    data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
     ds = xr.open_dataset(f'{data_dir}{var}.nc')
     # Fill coastal points to avoid selecting NaN
     sel_da = ds[f'{var}_rsl_mean'].ffill('lon', 3).bfill('lon', 3)
@@ -829,7 +831,9 @@ def contrib_frederikse2020_glob(var):
     Pandas dataframe of this variable with time in years as index
     '''
     
-    fts = pd.read_excel('../data/Frederikse2020/global_basin_timeseries.xlsx', sheet_name='Global')
+    data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
+#    fts = pd.read_excel('../data/Frederikse2020/global_basin_timeseries.xlsx', sheet_name='Global')
+    fts = pd.read_excel(f'{data_dir}/global_basin_timeseries.xlsx', sheet_name='Global')
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
     fts = fts/10 # Convert from mm to cm
