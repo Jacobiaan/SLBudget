@@ -33,7 +33,7 @@ def find_closest(lat, lon, lat_i, lon_i):
 
 def make_wind_df(lat_i, lon_i, product):
     """create a dataset for NCEP1 wind (1948-now) at 1 latitude/longitude point 
-    or ERA5 (1979-now) """
+    or ERA5 (1950-now) """
     if product == 'NCEP1':
         # Use for OpenDAP:
         #NCEP1 = 'http://www.esrl.noaa.gov/psd/thredds/dodsC/Datasets/ncep.reanalysis.derived/surface_gauss/'
@@ -102,10 +102,11 @@ def make_wind_df(lat_i, lon_i, product):
                                     pres=pres, ibe=ibe))
     wind_df = wind_df.set_index('t')
 
-    annual_wind_df = wind_df.resample('A', label='left', loffset=datetime.timedelta(days=1)).mean()
-    annual_wind_df.index = annual_wind_df.index.year
+#     annual_wind_df = wind_df.resample('A', label='left', loffset=datetime.timedelta(days=1)).mean()
+#     annual_wind_df.index = annual_wind_df.index.year
     
-    # return it
+    annual_wind_df = wind_df.groupby(wind_df.index.year).mean()
+    
     return annual_wind_df
 
 def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_pres=True, with_ar=False):
@@ -237,8 +238,8 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     names_col2 = ('time', 'height', 'interpolated', 'flags')
 
     for i in range(len(tg_id)):
-        tg_data = pd.read_csv(tg_data_dir + '/data/' + str(tg_id[i]) + '.rlrdata', sep=';', 
-                            header=None, names=names_col2)
+        tg_data = pd.read_csv(f'{tg_data_dir}/data/{tg_id[i]}.rlrdata', 
+                              sep=';', header=None, names=names_col2)
         tg_data = tg_data.set_index('time')
         tg_data.height = tg_data.height.where(~np.isclose(tg_data.height,-99999))
         tg_data.height = tg_data.height - tg_data.height.mean()
