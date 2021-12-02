@@ -48,27 +48,26 @@ def make_wind_df(lat_i, lon_i, product):
         un = 'uwnd'
         vn = 'vwnd'
         pn = 'pres'
-        if lon_i < 0:
-            lon_i = lon_i + 360
         
     elif product == 'ERA5':
-        ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/'
-        u_file = ERA5_dir + 'ERA5_u10.nc'
-        v_file = ERA5_dir + 'ERA5_v10.nc'
-        p_file = ERA5_dir + 'ERA5_msl.nc'
+        ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/'      
+        u_file = [ERA5_dir + 'ERA5_be_u10.nc', ERA5_dir + 'ERA5_u10.nc']
+        v_file = [ERA5_dir + 'ERA5_be_v10.nc', ERA5_dir + 'ERA5_v10.nc']
+        p_file = [ERA5_dir + 'ERA5_be_msl.nc', ERA5_dir + 'ERA5_msl.nc']
         latn = 'latitude'
         lonn = 'longitude'
         timen = 'time'
         un = 'u10'
         vn = 'v10'
         pn = 'msl'
-        if lon_i < 0:
-            lon_i = lon_i + 360
+    
+    if lon_i < 0:
+        lon_i = lon_i + 360
     
     # open the 3 files
-    ds_u = xr.open_dataset(u_file)
-    ds_v = xr.open_dataset(v_file)
-    ds_p = xr.open_dataset(p_file)
+    ds_u = xr.open_mfdataset(u_file)
+    ds_v = xr.open_mfdataset(v_file)
+    ds_p = xr.open_mfdataset(p_file)
     
     # read lat, lon, time from 1 dataset
     lat, lon = ds_u[latn][:], ds_u[lonn][:]
@@ -101,9 +100,6 @@ def make_wind_df(lat_i, lon_i, product):
     wind_df = pd.DataFrame(data=dict(u=u, v=v, t=u[timen], speed=speed, direction=direction, u2=u2, v2=v2, 
                                     pres=pres, ibe=ibe))
     wind_df = wind_df.set_index('t')
-
-#     annual_wind_df = wind_df.resample('A', label='left', loffset=datetime.timedelta(days=1)).mean()
-#     annual_wind_df.index = annual_wind_df.index.year
     
     annual_wind_df = wind_df.groupby(wind_df.index.year).mean()
     
