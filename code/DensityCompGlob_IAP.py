@@ -18,15 +18,22 @@ Dir_out = path +'density_teos10_IAP/'
 #     ds = ds.roll(longitude=180, roll_coords=True)
 #     ds['longitude'] = np.where(ds['longitude']>180, ds['longitude']-360, ds['longitude'])
 #     return ds
+#def rotate_longitude(ds, name_lon):
+#    ds[name_lon].values = (((ds[name_lon] + 180 ) % 360) - 180)
+#    ds = ds.sortby(ds[name_lon])
+#    return ds
+
 def rotate_longitude(ds, name_lon):
-    ds[name_lon].values = (((ds[name_lon] + 180 ) % 360) - 180)
+
+    ds = ds.assign_coords({name_lon:(((ds[name_lon] + 180 ) % 360) - 180)})
     ds = ds.sortby(ds[name_lon])
+
     return ds
 
 ################################################################################
 
 # Choose time of interest
-year_min, year_max = 1940, 2020 # Not including last year
+year_min, year_max = 2019, 2021 # Not including last year, 1940-2021
 
 for year in range(year_min, year_max):
     file_temp = 'Temp/CZ16_1_2000m_Temp_year_'+str(year)+'_month_*.nc'
