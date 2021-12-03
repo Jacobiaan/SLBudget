@@ -324,6 +324,7 @@ def thickness_from_depth(depth):
 def StericSL(max_depth, mask_name, data_source):
     '''Compute the steric sea level in cm integrated from the surface down to a 
     given depth given in meters. '''
+    
     if data_source == 'IAP':
         density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
                         'DataSteric/density_teos10_IAP/density_teos10_iap_*.nc')
@@ -347,6 +348,7 @@ def StericSL(max_depth, mask_name, data_source):
     StericSL.name = 'Steric'
     StericSL_df = StericSL.to_dataframe()
     del StericSL_df['depth']
+    
     return StericSL_df
     
 def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
@@ -370,7 +372,7 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     gia_df = gia_df.set_index("Location")
     gia_df = gia_df.sort_index()
     gia_avg = (gia_df.loc[tg_id]).GIA.mean() /10 # Convert from mm/y to cm/y
-    time = np.arange(1900, 2020)
+    time = np.arange(1900, 2025)
     gia_ts = gia_avg * (time - time[0])
     gia_ts_list = [("time", time),
                   ("GIA", gia_ts)]
@@ -782,13 +784,15 @@ def nodal_tides_potential(lat, time_years):
     nodcyc_df = nodcyc_df.set_index('time')
     return nodcyc_df
 
-def contrib_frederikse2020(tg_id, var):
+def contrib_frederikse2020(tg_id, var, extrap=False):
     '''
     Read values from Frederikse et al. 2020 budget.
+    Data from 1900 to 2018.
     
     Inputs: 
     List of tide gauges
     Variable (available: tws, AIS, glac, GrIS, steric)
+    extrap: Possibility to extrapolate up to 2020.
     
     Outputs:
     Dataframe giving the average contribution at the tide gauges
@@ -815,9 +819,19 @@ def contrib_frederikse2020(tg_id, var):
                'GrIS' : 'Greenland', 
                'glac' : 'Glaciers'}
     
-    return df.mean(axis=1).to_frame(fr_name[var])
+    out_df = df.mean(axis=1).to_frame(fr_name[var])
+    
+    if extrap:
+        nby = 10
+        trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
+        
+        for i in range(2):
+            out_df.loc[out_df.index.max() + 1] = (
+                trend[1]+trend[0]*(out_df.index.max()+1))
+    
+    return out_df
 
-def contrib_frederikse2020_glob(var):
+def contrib_frederikse2020_glob(var, extrap=False):
     '''
     Read values from Frederikse et al. 2020 budget.
     
@@ -834,11 +848,19 @@ def contrib_frederikse2020_glob(var):
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
     fts = fts/10 # Convert from mm to cm
-    output_df = pd.DataFrame(fts[f'{var} [mean]'])
+    out_df = pd.DataFrame(fts[f'{var} [mean]'])
     if var == 'Steric':
-        output_df = output_df.rename(columns = {'Steric [mean]':'GloSteric'})
+        out_df = out_df.rename(columns = {'Steric [mean]':'GloSteric'})
+        
+    if extrap:
+        nby = 10
+        trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
+        
+        for i in range(2):
+            out_df.loc[out_df.index.max() + 1] = (
+                trend[1]+trend[0]*(out_df.index.max()+1))
     
-    return output_df
+    return out_df
 
 def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
@@ -859,7 +881,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         if global_steric == 'levitus':
             glo_steric_df =  LevitusSL(extrap=True, extrap_back=True)
         elif global_steric == 'fred20':
-            glo_steric_df = contrib_frederikse2020_glob('Steric')
+            glo_steric_df = contrib_frederikse2020_glob('Steric', extrap=True)
         else:
             print('ERROR: option for global_steric undefined')
         
@@ -876,7 +898,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_glaciers == 'zemp19':
             glac_ts_df = glaciers_zemp19([tg_id[i]], extrap=True, del_green=True)
         elif opt_glaciers == 'fred20':
-            glac_ts_df = contrib_frederikse2020([tg_id[i]], 'glac')
+            glac_ts_df = contrib_frederikse2020([tg_id[i]], 'glac', extrap=True)
         else:
             print('ERROR: option for opt_glaciers undefined')
 
@@ -886,7 +908,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
         elif opt_antarctica == 'fred20':
-            ant_df = contrib_frederikse2020([tg_id[i]], 'AIS')
+            ant_df = contrib_frederikse2020([tg_id[i]], 'AIS', extrap=True)
         else:
             print('ERROR: option for opt_antarctica undefined')
 
@@ -894,14 +916,14 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
             green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 
                                                         'mit_unif', 'green')
         elif opt_greenland == 'fred20':
-            green_df = contrib_frederikse2020([tg_id[i]], 'GrIS')
+            green_df = contrib_frederikse2020([tg_id[i]], 'GrIS', extrap=True)
         else:
             print('ERROR: option for opt_greenland undefined')
         
         if opt_tws == 'humphrey19':
             tws_df = tws_glo_humphrey19(extrap=True)
         elif opt_tws == 'fred20':
-            tws_df = contrib_frederikse2020([tg_id[i]], 'tws')
+            tws_df = contrib_frederikse2020([tg_id[i]], 'tws', extrap=True)
         
         sealevel_df = steric_df.copy()
         sealevel_df = sealevel_df.join([ gia_ts_df, glac_ts_df, 
