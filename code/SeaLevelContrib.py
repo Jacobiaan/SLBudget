@@ -321,7 +321,7 @@ def thickness_from_depth(depth):
     thick_da = xr.DataArray(thick, coords={'depth': depth[:]}, dims='depth')
     return thick_da
     
-def StericSL(max_depth, mask_name, data_source):
+def StericSL(min_depth,max_depth, mask_name, data_source):
     '''Compute the steric sea level in cm integrated from the surface down to a 
     given depth given in meters. '''
     
@@ -342,7 +342,7 @@ def StericSL(max_depth, mask_name, data_source):
     
     SumDens = (SumDens * mask).mean(dim=['lat', 'lon'])
     rho_0 = (density_ds.density[0 ,0 ,: ,:] * mask).mean(dim=['lat', 'lon'])
-    StericSL = (- SumDens.sel(depth=slice(0,max_depth)).sum(dim='depth') 
+    StericSL = (- SumDens.sel(depth=slice(min_depth,max_depth)).sum(dim='depth') 
                 / rho_0) * 100
     StericSL = StericSL - StericSL.sel(time=slice(1940,1960)).mean(dim='time')
     StericSL.name = 'Steric'
@@ -870,7 +870,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
     
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] in ['EN4', 'IAP']:
-        loc_steric_df = StericSL(max_depth=opt_steric[2], mask_name=opt_steric[1], 
+        loc_steric_df = StericSL(0, max_depth=opt_steric[2], mask_name=opt_steric[1], 
                              data_source=opt_steric[0])
     else:
         print('ERROR: option for opt_steric[0] undefined')
