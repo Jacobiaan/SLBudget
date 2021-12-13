@@ -11,8 +11,8 @@ import xesmf as xe
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from IPython.display import set_matplotlib_formats
-set_matplotlib_formats('retina')
+import statsmodels.api as sm
+lowess = sm.nonparametric.lowess
 
 PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
 PATH_Data = '/Users/dewilebars/Data/'
@@ -321,9 +321,9 @@ def thickness_from_depth(depth):
     thick_da = xr.DataArray(thick, coords={'depth': depth[:]}, dims='depth')
     return thick_da
     
-def StericSL(min_depth,max_depth, mask_name, data_source):
-    '''Compute the steric sea level in cm integrated from the surface down to a 
-    given depth given in meters. '''
+def StericSL(min_depth,max_depth, mask_name, data_source, window):
+    '''Compute the steric sea level in cm integrated between two depth levels 
+    given in meters. '''
     
     if data_source == 'IAP':
         density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
@@ -348,6 +348,11 @@ def StericSL(min_depth,max_depth, mask_name, data_source):
     StericSL.name = 'Steric'
     StericSL_df = StericSL.to_dataframe()
     del StericSL_df['depth']
+    
+    if window > 1:
+        frac = window/StericSL_df.shape[0]
+        StericSL_df['Steric'] = lowess(StericSL_df['Steric'], StericSL_df.index, 
+                                       frac, return_sorted=False)
     
     return StericSL_df
     
@@ -871,7 +876,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
     tg_df = tide_gauge_obs(tg_id, interp=True)
     if opt_steric[0] in ['EN4', 'IAP']:
         loc_steric_df = StericSL(0, max_depth=opt_steric[2], mask_name=opt_steric[1], 
-                             data_source=opt_steric[0])
+                             data_source=opt_steric[0], window=opt_steric[3])
     else:
         print('ERROR: option for opt_steric[0] undefined')
 
