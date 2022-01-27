@@ -33,7 +33,7 @@ def find_closest(lat, lon, lat_i, lon_i):
 
 def make_wind_df(lat_i, lon_i, product):
     """create a dataset for NCEP1 wind (1948-now) at 1 latitude/longitude point 
-    or ERA5 (1950-now) """
+    or ERA5 (1950-now) or 20CR reanalysis"""
     if product == 'NCEP1':
         # Use for OpenDAP:
         #NCEP1 = 'http://www.esrl.noaa.gov/psd/thredds/dodsC/Datasets/ncep.reanalysis.derived/surface_gauss/'
@@ -60,6 +60,18 @@ def make_wind_df(lat_i, lon_i, product):
         un = 'u10'
         vn = 'v10'
         pn = 'msl'
+    
+    elif product == '20CR':
+        TCR_dir = PATH_SLBudgets_data + 'WindPressure/20CR/'
+        u_file = TCR_dir + 'uwnd.10m.mon.mean.nc'
+        v_file = TCR_dir + 'vwnd.10m.mon.mean.nc'
+        p_file = TCR_dir + 'prmsl.mon.mean.nc'
+        latn = 'lat'
+        lonn = 'lon'
+        timen = 'time'
+        un = 'uwnd'
+        vn = 'vwnd'
+        pn = 'prmsl'
     
     if lon_i < 0:
         lon_i = lon_i + 360
@@ -92,13 +104,14 @@ def make_wind_df(lat_i, lon_i, product):
     # compute direction in 0-2pi domain
     direction = np.mod(np.angle(u + v * 1j), 2*np.pi)
     
-    # Compute the wind squared while retaining sign, as a approximation of stress
-    u2 = u**2 * np.sign(u) #!!!! u**2
+    # Compute the wind squared while retaining sign, as an approximation of stress
+    u2 = u**2 * np.sign(u)
     v2 = v**2 * np.sign(v)
     
     # put everything in a dataframe
-    wind_df = pd.DataFrame(data=dict(u=u, v=v, t=u[timen], speed=speed, direction=direction, u2=u2, v2=v2, 
-                                    pres=pres, ibe=ibe))
+    wind_df = pd.DataFrame(data=dict(u=u, v=v, t=u[timen], speed=speed, 
+                                     direction=direction, u2=u2, v2=v2, 
+                                     pres=pres, ibe=ibe))
     wind_df = wind_df.set_index('t')
     
     annual_wind_df = wind_df.groupby(wind_df.index.year).mean()
@@ -107,6 +120,7 @@ def make_wind_df(lat_i, lon_i, product):
 
 def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_pres=True, with_ar=False):
     ''' Define the statistical model, similar to zeespiegelmonitor'''
+    
     t = np.array(df.index)
     y = df['height']
     X = np.ones(len(t))
@@ -128,9 +142,11 @@ def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_
     else:
         model = sm.OLS(y, X, missing='drop')
     fit = model.fit(cov_type='HC0')
+    
     return fit, names
 
 def make_wpn_ef(tg_id, tgm_df, with_nodal, with_trend, product):
+    
     for i in range( len(tg_id)):
         tg_lat, tg_lon = tg_lat_lon(tg_id[i])
         annual_wind_df = make_wind_df(tg_lat, tg_lon, product)
@@ -142,6 +158,7 @@ def make_wpn_ef(tg_id, tgm_df, with_nodal, with_trend, product):
         mod = np.array(linear_fit.params[:]) * np.array(linear_fit.model.exog[:,:])
         w_ef = mod[:,[1,2]].sum(axis=1)
         p_ef = mod[:,3]
+        
         if with_nodal:
             n_ef = mod[:,[4,5]].sum(axis=1)
             
@@ -161,13 +178,16 @@ def make_wpn_ef(tg_id, tgm_df, with_nodal, with_trend, product):
                 n_ef_df[str(tg_id[i])] = n_ef
             w_ef_df[str(tg_id[i])] = w_ef
             p_ef_df[str(tg_id[i])] = p_ef
+            
     if with_nodal:
         wpn_ef_df = pd.DataFrame(data=dict(time=time_y, Nodal=n_ef_df.mean(axis=1), 
                         Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
     else:
         wpn_ef_df = pd.DataFrame(data=dict(time=time_y, 
                 Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
+        
     wpn_ef_df = wpn_ef_df.set_index('time')
+    
     return wpn_ef_df
 
 def make_waqua_df(tg_id):
@@ -386,7 +406,7 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     return gia_ts_df
 
 def tg_lat_lon(tg_id):
-    '''Give tide gauge latitude, longitude location given the id as input'''
+    '''Return tide gauge latitude, longitude location given the id as input'''
     tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
@@ -765,6 +785,7 @@ def LevitusSL(reg = 'Global', extrap_back = False, extrap=False):
 def GloSLDang19():
     ''' Global sea level reconstruction from Dangendorf et al. 2019. 
     Looks like read_csv cannot read the first line of data. Why?'''
+    
     Dir_GloSL = PATH_Data + 'SeaLevelReconstructions/'
     GloSLDang19_df = pd.read_csv(Dir_GloSL + 'DataDangendorf2019.txt', 
                       names=['time', 'GMSL', 'Error'], header=1, delim_whitespace=True)
@@ -775,9 +796,13 @@ def GloSLDang19():
     del GloSLDang19_df['time']
     del GloSLDang19_df['Error'] # Remove error columns because the yearly error is not the average of monthly errors
     GloSLDang19_df.index.names = ['time']
+    
     return GloSLDang19_df / 10 # Convert from mm to cm
 
 def nodal_tides_potential(lat, time_years):
+    '''Compute the nodal tide potential based on Woodworth et al. 2012,
+    https://doi.org/10.2112/JCOASTRES-D-11A-00023.1'''
+    
     h2 = 0.6032
     k2 = 0.298
 
@@ -787,6 +812,7 @@ def nodal_tides_potential(lat, time_years):
     
     nodcyc_df = pd.DataFrame(data={'time': time_years, 'Nodal': nodcyc})
     nodcyc_df = nodcyc_df.set_index('time')
+    
     return nodcyc_df
 
 def contrib_frederikse2020(tg_id, var, extrap=False):
