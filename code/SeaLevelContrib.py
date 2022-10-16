@@ -17,6 +17,8 @@ lowess = sm.nonparametric.lowess
 PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
 PATH_Data = '/Users/dewilebars/Data/'
 
+tg_data_dir = f'{PATH_SLBudgets_data}rlr_annual'
+
 # Define a few constants
 er = 6.371e6 # Earth's radius in meters
 oa = 3.6704e14 # Total ocean area m**2
@@ -196,7 +198,6 @@ def make_waqua_df(tg_id):
     ds_wa = netCDF4.Dataset(dir_waqua+'/ERAintWAQUA_waterlevels_speed_1979_2015.nc')
 
     # Get WAQUA tide gauge names that are not editted in the same way as PSMSL names
-    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
@@ -240,16 +241,25 @@ def make_gtsm_df(tg_id, var):
     
     return df
 
+def read_tg_info():
+    '''Read csv file containing the information about all tide gauges and export 
+    as pandas dataframe'''
+    
+    names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
+    filelist_df = pd.read_csv(f'{tg_data_dir}/filelist.txt', sep=';', 
+                              header=None, names=names_col)
+    filelist_df = filelist_df.set_index('id')
+    
+    filelist_df['name'] = [n.strip() for n in filelist_df['name']]
+    
+    return filelist_df
+
 def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     '''Read a list of tide gauge data and compute the average. 
     Set interp to True for a linear interpollation of missing values.
     By default use the 6 tide gauges from the Zeespiegelmonitor''' 
     
-    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
-    names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
-    filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', 
-                              header=None, names=names_col)
-    filelist_df = filelist_df.set_index('id')
+    filelist_df = read_tg_info()
 
     names_col2 = ('time', 'height', 'interpolated', 'flags')
 
@@ -867,14 +877,13 @@ def contrib_frederikse2020_glob(var, extrap=False):
     Read values from Frederikse et al. 2020 budget.
     
     Inputs:
-    variable (available: Steric, for other variables see excel sheet)
+    variable (available: Steric, Glaciers, for other variables see excel sheet)
     
     Outputs:
     Pandas dataframe of this variable with time in years as index
     '''
     
     data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
-#    fts = pd.read_excel('../data/Frederikse2020/global_basin_timeseries.xlsx', sheet_name='Global')
     fts = pd.read_excel(f'{data_dir}/global_basin_timeseries.xlsx', sheet_name='Global')
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
@@ -1068,7 +1077,7 @@ def plot_budget(tg_sel, slmean_df):
     ax[1,0].hlines(y=lin_trend[-1], xmin=-0.5, xmax=0.5, color='black')
     ax[1,0].set_ylabel('Linear trend (mm/year)')
     ax[1,0].legend(handles=legend_elements, loc='upper right')
-    ax[1,0].text(0.02, 0.02, 
+    ax[1,0].text(0.02, 0.01, 
                  f'Observed trend: {round(lin_trend[-1],2)}\n'+ 
                  f'Budget trend: {round(lin_trend[0],2)}', 
                  va='bottom', ha='left', 
