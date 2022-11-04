@@ -33,7 +33,7 @@ def rotate_longitude(ds, name_lon):
 ################################################################################
 
 # Choose time of interest
-year_min, year_max = 2019, 2021 # Not including last year, 1940-2021
+year_min, year_max = 2021, 2022 # Not including last year, 1940-2021
 
 for year in range(year_min, year_max):
     file_temp = 'Temp/CZ16_1_2000m_Temp_year_'+str(year)+'_month_*.nc'
