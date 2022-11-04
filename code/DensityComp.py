@@ -10,17 +10,17 @@ import numpy as np
 import xarray as xr
 import gsw
 
-Dir = '/Volumes/Elements/Data/EN4/netcdf_EN.4.2.1.analyses.g10/'
+Dir = '/Volumes/Elements/Data/EN4/netcdf_EN.4.2.2.analyses.g10/'
 
 # Choose the area and time of interest
 lat_min, lat_max, lon_min, lon_max = 30, 70, -20, 20
-year_min, year_max = 1900, 2019
+year_min, year_max = 1900, 2022
 
 for year in range(year_min, year_max):
-    EN4_file = 'EN.4.2.1.f.analysis.g10.'+str(year)+'*.nc'
+    EN4_file = 'EN.4.2.2.f.analysis.g10.'+str(year)+'*.nc'
     print('Working on file:'+EN4_file)
     EN4_d = xr.open_mfdataset(Dir+EN4_file)
-    EN4_d.lon.values = (((EN4_d.lon + 180 ) % 360) - 180)
+    EN4_d = EN4_d.assign_coords({'lon':(((EN4_d['lon'] + 180 ) % 360) - 180)})
     EN4_d = EN4_d.sortby(EN4_d.lon)
     EN4_d = EN4_d.sel(lat=slice(lat_min,lat_max),lon=slice(lon_min,lon_max))
     temp = EN4_d.temperature.mean(dim='time') - 272.15 # Convert from Kelvin to Celsius
@@ -74,6 +74,6 @@ for year in range(year_min, year_max):
 DENS_d = xr.merge((RHO, ALPHA, BETA))
 DENS_d['time'] = range(year_min, year_max)
 
-DENS_d.to_netcdf('density_teos10_en4_'+ str(year_min) + '_' + str(year_max) + '.nc')
+DENS_d.to_netcdf('density_teos10_en422_g10_'+ str(year_min) + '_' + str(year_max) + '.nc')
 
 
