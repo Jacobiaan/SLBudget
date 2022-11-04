@@ -53,9 +53,15 @@ def make_wind_df(lat_i, lon_i, product):
         
     elif product == 'ERA5':
         ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/'      
-        u_file = [ERA5_dir + 'ERA5_be_u10.nc', ERA5_dir + 'ERA5_u10.nc']
-        v_file = [ERA5_dir + 'ERA5_be_v10.nc', ERA5_dir + 'ERA5_v10.nc']
-        p_file = [ERA5_dir + 'ERA5_be_msl.nc', ERA5_dir + 'ERA5_msl.nc']
+        u_file = [ERA5_dir + 'ERA5_be_u10.nc', 
+                  ERA5_dir + 'ERA5_u10.nc',
+                  ERA5_dir + 'ERA5_u10_2021.nc']
+        v_file = [ERA5_dir + 'ERA5_be_v10.nc', 
+                  ERA5_dir + 'ERA5_v10.nc',
+                  ERA5_dir + 'ERA5_v10_2021.nc']
+        p_file = [ERA5_dir + 'ERA5_be_msl.nc', 
+                  ERA5_dir + 'ERA5_msl.nc',
+                  ERA5_dir + 'ERA5_msl_2021.nc']
         latn = 'latitude'
         lonn = 'longitude'
         timen = 'time'
