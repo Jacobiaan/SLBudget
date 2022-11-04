@@ -278,9 +278,9 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
             tg_data_df = pd.DataFrame(data=dict(time=tg_data.index, 
                                                 col_name=tg_data.height))
             tg_data_df = tg_data_df.set_index('time')
-            tg_data_df.columns  = [str(tg_id[i])] 
+            tg_data_df.columns  = [tg_id[i]] 
         else:
-            tg_data_df[str(tg_id[i])] = tg_data.height
+            tg_data_df[tg_id[i]] = tg_data.height
 
     if interp:
         tg_data_df = tg_data_df.interpolate(method='slinear')
@@ -315,7 +315,7 @@ def altimetry_obs(tg_id, box):
     duacs_ds['sla'] = duacs_ds.sla*100 # Convert from meter to cm
     duacs_y_ds = duacs_ds.groupby('time.year').mean()
 
-    df = pd.DataFrame(index=duacs_y_ds.year)
+    df = pd.DataFrame(index=pd.Series(duacs_y_ds.year.values, name="time"))
     
     for i in range(len(tg_id)):
         geo_coord = tg_lat_lon(tg_id[i])
@@ -440,15 +440,19 @@ def StericSL(min_depth,max_depth, mask_name, data_source, window):
 def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     '''Read the current GIA 250kaBP-250kaAP from the ICE6G model and output a
     time series in a pandas dataframe format'''
+    
     dir_ICE6G = PATH_SLBudgets_data + "GIA/ICE6G/"
     locat = []
     gia = []
+    
     with open (dir_ICE6G + "drsl.PSMSL.ICE6G_C_VM5a_O512.txt", "r") as myfile:
         data = myfile.readlines()
+        
     for i in range(7,len(data)):
         line = data[i].split()
         locat.append(line[2])
         gia.append(line[-1])
+        
     # Now build a pandas dataframe from these lists
     gia_list = [("Location", locat),
                 ("GIA", gia)]
@@ -464,6 +468,7 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
                   ("GIA", gia_ts)]
     gia_ts_df = pd.DataFrame.from_dict(dict(gia_ts_list))
     gia_ts_df = gia_ts_df.set_index("time")
+    
     return gia_ts_df
 
 def tg_lat_lon(tg_id):
@@ -989,6 +994,10 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
     for i in range(len(tg_id)):
         print('Working on tide gauge id: '+ str(tg_id[i]))
         gia_ts_df = GIA_ICE6G([tg_id[i]])
+        
+        # Remove GIA from budget when using altimetry
+        if opt_sl == 'altimetry':
+            gia_ts_df['GIA'] = 0
 
         if opt_glaciers == 'marzeion15':
             glac_ts_df = glaciers_m15([tg_id[i]], extrap=True, del_green=True)
@@ -1039,7 +1048,7 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
-            diff_sl_df = sl_df[f'{tg_id[i]}'] - sealevel_df.Total
+            diff_sl_df = sl_df[tg_id[i]] - sealevel_df.Total
             diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
             wpn_ef_df = make_wpn_ef([tg_id[i]], diff_sl_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
@@ -1080,7 +1089,7 @@ def plot_budget(tg_sel, slmean_df):
     fig, ax = plt.subplots(2, 2, figsize=(9,9), gridspec_kw={'height_ratios': [1, 1]})
     fig.tight_layout(pad=1.9)
 
-    ax[0,0].plot(slmean_df.Obs - slmean_df.Obs.mean(), 'o-', label='Tide gauge observations')
+    ax[0,0].plot(slmean_df.Obs - slmean_df.Obs.mean(), 'o-', label='Sea level observations')
     ax[0,0].plot(slmean_df.Total - slmean_df.Total.mean() , 'r-', label='Sum of contributors')
 
     #ax[0,0].set_xlabel('time')
