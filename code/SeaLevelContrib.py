@@ -913,7 +913,7 @@ def contrib_frederikse2020(tg_id, var, extrap=False):
         nby = 10
         trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
         
-        for i in range(2):
+        for i in range(3):
             out_df.loc[out_df.index.max() + 1] = (
                 trend[1]+trend[0]*(out_df.index.max()+1))
     
@@ -943,7 +943,7 @@ def contrib_frederikse2020_glob(var, extrap=False):
         nby = 10
         trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
         
-        for i in range(2):
+        for i in range(3):
             out_df.loc[out_df.index.max() + 1] = (
                 trend[1]+trend[0]*(out_df.index.max()+1))
     
@@ -1033,7 +1033,7 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
-            diff_sl_df = sl_df.Average - sealevel_df.Total
+            diff_sl_df = sl_df[f'{tg_id[i]}'] - sealevel_df.Total
             diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
             wpn_ef_df = make_wpn_ef([tg_id[i]], diff_sl_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
