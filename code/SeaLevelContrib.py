@@ -258,8 +258,6 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     '''Read a list of tide gauge data and compute the average. 
     Set interp to True for a linear interpollation of missing values.
     By default use the 6 tide gauges from the Zeespiegelmonitor''' 
-    
-    filelist_df = read_tg_info()
 
     names_col2 = ('time', 'height', 'interpolated', 'flags')
 
@@ -285,6 +283,50 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     tg_data_df = tg_data_df * 0.1 # Convert from mm to cm
     
     return tg_data_df
+
+def rotate_longitude(ds, name_lon):
+
+    ds = ds.assign_coords({name_lon:(((ds[name_lon] + 180 ) % 360) - 180)})
+    ds = ds.sortby(ds[name_lon])
+
+    return ds
+
+def altimetry_obs(tg_id, box):
+    '''Read satellite altimetry data at a list of tide gauge locations. 
+    Compute the yearly average sea level and the average of the list of 
+    tide gauge locations.
+    Give a box value of 0 to select the closest altimetry point to the tide 
+    gauge and larger than 0 to include the average altimetry field over 
+    an area. The value of area used is:
+    lat-box: lat+box
+    lon-box: lon+box
+    with box in degrees.''' 
+
+    duacs_dir = '~/Data/duacs_cmems/'
+    file_name = f'{duacs_dir}cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1M-m_*.nc'
+    duacs_ds = xr.open_mfdataset(file_name).load()
+    duacs_ds = rotate_longitude(duacs_ds, 'longitude')
+    duacs_ds['sla'] = duacs_ds.sla*100 # Convert from meter to cm
+    duacs_y_ds = duacs_ds.groupby('time.year').mean()
+
+    df = pd.DataFrame(index=duacs_y_ds.year)
+    
+    for i in range(len(tg_id)):
+        geo_coord = tg_lat_lon(tg_id[i])
+        
+        if box==0:
+            ts = duacs_y_ds.sel(latitude=geo_coord[0], longitude=geo_coord[1], 
+                                method="nearest")
+        else:
+            ts = duacs_y_ds.sel(latitude=slice(geo_coord[0]-box, geo_coord[0]+box), 
+                                longitude=slice(geo_coord[1]-box, geo_coord[1]+box)
+                               ).mean(dim=["latitude","longitude"])
+        
+        df[tg_id[i]] = ts.sla
+        
+    df['Average'] = df.mean(axis=1)
+    
+    return df
 
 def steric_masks_north_sea(da, mask_name):
     '''Define a few masks to use to compute the steric expansion that is felt 
@@ -358,10 +400,13 @@ def StericSL(min_depth,max_depth, mask_name, data_source, window):
     if data_source == 'IAP':
         density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
                         'DataSteric/density_teos10_IAP/density_teos10_iap_*.nc')
-    elif data_source == 'EN4':
+    elif data_source == 'EN4_21':
         density_ds = xr.open_dataset(PATH_SLBudgets_data + 
                        'DataSteric/density_teos10_EN421f_analysis_g10/' + 
                        'density_teos10_en4_1900_2019.nc')
+    elif data_source == 'EN4_22':
+        density_ds = xr.open_dataset(PATH_SLBudgets_data + 
+                       'DataSteric/density_teos10_en422_g10_1900_2022.nc')
     else:
         print('ERROR: data_source not defined')
     
@@ -417,10 +462,12 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
 
 def tg_lat_lon(tg_id):
     '''Return tide gauge latitude, longitude location given the id as input'''
+    
     tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
+    
     return filelist_df.loc[tg_id].lat, filelist_df.loc[tg_id].lon
 
 def glaciers_m15_glo():
@@ -902,14 +949,18 @@ def contrib_frederikse2020_glob(var, extrap=False):
     
     return out_df
 
-def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica, 
+def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
                  global_steric, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
     
-    tg_df = tide_gauge_obs(tg_id, interp=True)
-    if opt_steric[0] in ['EN4', 'IAP']:
+    if opt_sl == 'tide_gauge':
+        sl_df = tide_gauge_obs(tg_id, interp=True)
+    elif opt_sl == 'altimetry':
+        sl_df = altimetry_obs(tg_id, 0)
+    
+    if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:
         loc_steric_df = StericSL(0, max_depth=opt_steric[2], mask_name=opt_steric[1], 
                              data_source=opt_steric[0], window=opt_steric[3])
     else:
@@ -982,9 +1033,9 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
-            diff_tg_df = tg_df.Average - sealevel_df.Total
-            diff_tg_df = diff_tg_df.to_frame(name='height').dropna()
-            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_tg_df, with_nodal, 
+            diff_sl_df = sl_df.Average - sealevel_df.Total
+            diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
+            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_sl_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
         elif opt_wind_ibe[0] == 'dynamical_model':
             if opt_wind_ibe[1] == 'WAQUA':
@@ -1011,7 +1062,7 @@ def budget_at_tg(INFO, tg_id, opt_steric, opt_glaciers, opt_antarctica,
 
     if avg:        # Compute the average contributors at all tide gauges
         slmean_df = slall_df.groupby(level=1, axis=1, sort=False).mean()
-        slmean_df = slmean_df.join(tg_df.Average, how='inner')
+        slmean_df = slmean_df.join(sl_df.Average, how='inner')
         slmean_df = slmean_df.rename(columns={'Average': 'Obs'})
         slall_df = slmean_df
 
