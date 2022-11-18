@@ -883,13 +883,13 @@ def nodal_tides_potential(lat, time_years):
     
     return nodcyc_df
 
-def contrib_frederikse2020(tg_id, var, extrap=False):
+def contrib_frederikse2020(coord, var, extrap=False):
     '''
     Read values from Frederikse et al. 2020 budget.
     Data from 1900 to 2018.
     
     Inputs: 
-    List of tide gauges
+    coord [latitude, longitude]
     Variable (available: tws, AIS, glac, GrIS, steric)
     extrap: Possibility to extrapolate up to 2020.
     
@@ -899,36 +899,33 @@ def contrib_frederikse2020(tg_id, var, extrap=False):
     
     data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
     ds = xr.open_dataset(f'{data_dir}{var}.nc')
+    
     # Fill coastal points to avoid selecting NaN
     sel_da = ds[f'{var}_rsl_mean'].ffill('lon', 3).bfill('lon', 3)
     sel_da = sel_da/10 # Convert from mm to cm
     
-    for i in range(len(tg_id)):
-        tg_lat, tg_lon =  tg_lat_lon([tg_id[i]])
-        loc_da = sel_da.sel(lon = tg_lon.values, lat = tg_lat.values, 
-                            method = 'nearest')
-        if i == 0:
-            loc_da.name = f'{tg_id[i]}'
-            df = loc_da.squeeze().reset_coords(drop=True).to_dataframe()
-        else:
-            df[f'{tg_id[i]}'] = loc_da.squeeze().values
+    loc_da = sel_da.sel(lat = coord[0], 
+                        lon = coord[1], 
+                        method = 'nearest')
+    
+    df = loc_da.squeeze().reset_coords(drop=True).to_dataframe()
 
     fr_name = {'tws' : 'TWS', 
                'AIS' : 'Antarctica', 
                'GrIS' : 'Greenland', 
                'glac' : 'Glaciers'}
     
-    out_df = df.mean(axis=1).to_frame(fr_name[var])
+    df.columns = [fr_name[var]]
+    
     
     if extrap:
         nby = 10
-        trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
+        trend = np.polyfit(df.index[-nby:], df.iloc[-nby:], 1)
         
         for i in range(3):
-            out_df.loc[out_df.index.max() + 1] = (
-                trend[1]+trend[0]*(out_df.index.max()+1))
+            df.loc[df.index.max() + 1] = (trend[1]+trend[0]*(df.index.max()+1))
     
-    return out_df
+    return df
 
 def contrib_frederikse2020_glob(var, extrap=False):
     '''
@@ -960,16 +957,23 @@ def contrib_frederikse2020_glob(var, extrap=False):
     
     return out_df
 
-def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica, 
+def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica, 
                  opt_greenland, opt_tws, opt_wind_ibe, opt_nodal, 
                  global_steric, avg):
     '''Compute the sea level budget at tide gauge locations. 
     avg (boolean): Compute the average budget over the list of tide gauges'''
     
+    if type(location) == list:
+        location_type = 'tg_id'
+        cond_loop = len(location)
+    elif type(location) == np.ndarray:
+        location_type = 'region'
+        cond_loop = 1
+    
     if opt_sl == 'tide_gauge':
-        sl_df = tide_gauge_obs(tg_id, interp=True)
+        sl_df = tide_gauge_obs(location, interp=True)
     elif opt_sl == 'altimetry':
-        sl_df = altimetry_obs(tg_id, 0)
+        sl_df = altimetry_obs(location, 0)
     
     if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:
         loc_steric_df = StericSL(0, max_depth=opt_steric[2], mask_name=opt_steric[1], 
@@ -990,54 +994,59 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         steric_df = steric_df.join(glo_steric_df)
         steric_df = steric_df.rename(columns={'Steric': 'LocSteric'})
         steric_df['LocSteric'] = steric_df['LocSteric'] - steric_df['GloSteric']
+    
+    for i in range(cond_loop):
         
-    for i in range(len(tg_id)):
-        print('Working on tide gauge id: '+ str(tg_id[i]))
-        gia_ts_df = GIA_ICE6G([tg_id[i]])
+        if location_type == 'tg_id':
+            coord = tg_lat_lon(location[i])
+        elif location_type == 'region':
+            coord = [np.mean(location[:,0]), np.mean(location[:,1])]
+        
+        print('Working on tide gauge id: '+ str(location[i]))
+        gia_ts_df = GIA_ICE6G([location[i]])
         
         # Remove GIA from budget when using altimetry
         if opt_sl == 'altimetry':
             gia_ts_df['GIA'] = 0
 
         if opt_glaciers == 'marzeion15':
-            glac_ts_df = glaciers_m15([tg_id[i]], extrap=True, del_green=True)
+            glac_ts_df = glaciers_m15([location[i]], extrap=True, del_green=True)
         elif opt_glaciers == 'zemp19':
-            glac_ts_df = glaciers_zemp19([tg_id[i]], extrap=True, del_green=True)
+            glac_ts_df = glaciers_zemp19([location[i]], extrap=True, del_green=True)
         elif opt_glaciers == 'fred20':
-            glac_ts_df = contrib_frederikse2020([tg_id[i]], 'glac', extrap=True)
+            glac_ts_df = contrib_frederikse2020(coord, 'glac', extrap=True)
         else:
             print('ERROR: option for opt_glaciers undefined')
 
         if opt_antarctica == 'imbie18':
-            ant_df = ant_imbie18(extrap=True) * ices_fp([tg_id[i]], 'mit_unif', 
+            ant_df = ant_imbie18(extrap=True) * ices_fp([location[i]], 'mit_unif', 
                                                                   'ant')
         elif opt_antarctica == 'rignot19':
-            ant_df = ant_rignot19() * ices_fp([tg_id[i]] , 'mit_unif', 'ant')
+            ant_df = ant_rignot19() * ices_fp([location[i]] , 'mit_unif', 'ant')
         elif opt_antarctica == 'fred20':
-            ant_df = contrib_frederikse2020([tg_id[i]], 'AIS', extrap=True)
+            ant_df = contrib_frederikse2020(coord, 'AIS', extrap=True)
         else:
             print('ERROR: option for opt_antarctica undefined')
 
         if opt_greenland == 'mouginot19':
-            green_df = green_mouginot19_glo() * ices_fp([tg_id[i]] , 
+            green_df = green_mouginot19_glo() * ices_fp([location[i]] , 
                                                         'mit_unif', 'green')
         elif opt_greenland == 'fred20':
-            green_df = contrib_frederikse2020([tg_id[i]], 'GrIS', extrap=True)
+            green_df = contrib_frederikse2020(coord, 'GrIS', extrap=True)
         else:
             print('ERROR: option for opt_greenland undefined')
         
         if opt_tws == 'humphrey19':
             tws_df = tws_glo_humphrey19(extrap=True)
         elif opt_tws == 'fred20':
-            tws_df = contrib_frederikse2020([tg_id[i]], 'tws', extrap=True)
+            tws_df = contrib_frederikse2020(coord, 'tws', extrap=True)
         
         sealevel_df = steric_df.copy()
         sealevel_df = sealevel_df.join([ gia_ts_df, glac_ts_df, 
                                         ant_df, green_df, tws_df], how='inner')
         
         if opt_nodal == 'potential':
-            tg_lat, tg_lon = tg_lat_lon(tg_id[i])
-            nodal_df = nodal_tides_potential(tg_lat, sealevel_df.index)
+            nodal_df = nodal_tides_potential(coord[0], sealevel_df.index)
             sealevel_df = sealevel_df.join(nodal_df)
             with_nodal = False
         elif opt_nodal == 'regression':
@@ -1048,15 +1057,15 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
-            diff_sl_df = sl_df[tg_id[i]] - sealevel_df.Total
+            diff_sl_df = sl_df[location[i]] - sealevel_df.Total
             diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
-            wpn_ef_df = make_wpn_ef([tg_id[i]], diff_sl_df, with_nodal, 
+            wpn_ef_df = make_wpn_ef([location[i]], diff_sl_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
         elif opt_wind_ibe[0] == 'dynamical_model':
             if opt_wind_ibe[1] == 'WAQUA':
-                wpn_ef_df = make_waqua_df(tg_id[i])
+                wpn_ef_df = make_waqua_df(location[i])
             elif opt_wind_ibe[1] == 'GTSM':
-                wpn_ef_df = make_gtsm_df(tg_id[i], 'surge')
+                wpn_ef_df = make_gtsm_df(location[i], 'surge')
             else:
                 print('ERROR: option for opt_wind_ibe[1] undefined')
         else:
@@ -1068,7 +1077,7 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()
         sealevel_df.index.name = 'time'
         sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
-        sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(tg_id[i])])
+        sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(location[i])])
         
         if i==0:
             slall_df = sealevel_df.copy()
@@ -1083,7 +1092,7 @@ def budget_at_tg(INFO, tg_id, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
 
     return slall_df
 
-def plot_budget(tg_sel, slmean_df):
+def plot_budget(location_name, slmean_df):
     '''Summary plot of the sea level budget. Should be split in smaller functions.'''
     ### Plot compaison between tide gauge observations and budget
     fig, ax = plt.subplots(2, 2, figsize=(9,9), gridspec_kw={'height_ratios': [1, 1]})
@@ -1094,7 +1103,7 @@ def plot_budget(tg_sel, slmean_df):
 
     #ax[0,0].set_xlabel('time')
     ax[0,0].set_ylabel('sea level (cm)')
-    ax[0,0].set_title('Yearly average sea level at '+tg_sel)
+    ax[0,0].set_title('Yearly average sea level at '+location_name)
     ax[0,0].grid(True)
     ax[0,0].legend(loc='upper left')
 
