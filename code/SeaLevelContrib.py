@@ -10,6 +10,7 @@ import gzip
 import xesmf as xe
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import regionmask
 
 import statsmodels.api as sm
 lowess = sm.nonparametric.lowess
@@ -153,48 +154,26 @@ def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_
     
     return fit, names
 
-def make_wpn_ef(tg_id, tgm_df, with_nodal, with_trend, product):
+
+def make_wpn_ef(coord, tgm_df, with_nodal, with_trend, product):
+    '''Prepare a dataframe of wind, pressure and nodal cycle influences on sea level'''
     
-    for i in range( len(tg_id)):
-        tg_lat, tg_lon = tg_lat_lon(tg_id[i])
-        annual_wind_df = make_wind_df(tg_lat, tg_lon, product)
-        df_c = tgm_df.join(annual_wind_df, how='inner')
-        df_c.index.names = ['year']
-        linear_fit, names = linear_model_zsm(df_c, with_trend, with_nodal, 
-                                             with_wind=True, with_pres=True, with_ar=False)
-        time_y = df_c.index
-        mod = np.array(linear_fit.params[:]) * np.array(linear_fit.model.exog[:,:])
-        w_ef = mod[:,[1,2]].sum(axis=1)
-        p_ef = mod[:,3]
-        
-        if with_nodal:
-            n_ef = mod[:,[4,5]].sum(axis=1)
-            
-        if i==0:
-            if with_nodal:
-                n_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=n_ef))
-                n_ef_df = n_ef_df.set_index('time')
-                n_ef_df.columns  = [str(tg_id[i])] 
-            w_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=w_ef))
-            w_ef_df = w_ef_df.set_index('time')
-            w_ef_df.columns  = [str(tg_id[i])]
-            p_ef_df = pd.DataFrame(data=dict(time=time_y, col_name=p_ef))
-            p_ef_df = p_ef_df.set_index('time')
-            p_ef_df.columns  = [str(tg_id[i])]
-        else:
-            if with_nodal:
-                n_ef_df[str(tg_id[i])] = n_ef
-            w_ef_df[str(tg_id[i])] = w_ef
-            p_ef_df[str(tg_id[i])] = p_ef
-            
+    annual_wind_df = make_wind_df(coord[0], coord[1], product)
+    df_c = tgm_df.join(annual_wind_df, how='inner')
+    df_c.index.names = ['year']
+    linear_fit, names = linear_model_zsm(df_c, with_trend, with_nodal, 
+                                         with_wind=True, with_pres=True, with_ar=False)
+    
+    mod = np.array(linear_fit.params[:]) * np.array(linear_fit.model.exog[:,:])
+    
+    wpn_ef_df = pd.DataFrame(index=df_c.index)
+    
     if with_nodal:
-        wpn_ef_df = pd.DataFrame(data=dict(time=time_y, Nodal=n_ef_df.mean(axis=1), 
-                        Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
-    else:
-        wpn_ef_df = pd.DataFrame(data=dict(time=time_y, 
-                Wind=w_ef_df.mean(axis=1), Pressure=p_ef_df.mean(axis=1)))
-        
-    wpn_ef_df = wpn_ef_df.set_index('time')
+        wpn_ef_df['Nodal'] = mod[:,[4,5]].sum(axis=1)
+    
+    
+    wpn_ef_df['Wind'] = mod[:,[1,2]].sum(axis=1)
+    wpn_ef_df['Pressure'] = mod[:,3]
     
     return wpn_ef_df
 
@@ -297,10 +276,12 @@ def rotate_longitude(ds, name_lon):
 
     return ds
 
-def altimetry_obs(tg_id, box):
-    '''Read satellite altimetry data at a list of tide gauge locations. 
+def altimetry_obs(location, box):
+    '''Read satellite altimetry data at a list of tide gauge locations
+    if location is a list of within a region it location is a polygone.
     Compute the yearly average sea level and the average of the list of 
-    tide gauge locations.
+    tide gauge locations or region.
+    
     Give a box value of 0 to select the closest altimetry point to the tide 
     gauge and larger than 0 to include the average altimetry field over 
     an area. The value of area used is:
@@ -317,19 +298,38 @@ def altimetry_obs(tg_id, box):
 
     df = pd.DataFrame(index=pd.Series(duacs_y_ds.year.values, name="time"))
     
-    for i in range(len(tg_id)):
-        geo_coord = tg_lat_lon(tg_id[i])
+    if type(location) == list:
+        # Working with tide gauge IDs
         
-        if box==0:
-            ts = duacs_y_ds.sel(latitude=geo_coord[0], longitude=geo_coord[1], 
-                                method="nearest")
-        else:
-            ts = duacs_y_ds.sel(latitude=slice(geo_coord[0]-box, geo_coord[0]+box), 
-                                longitude=slice(geo_coord[1]-box, geo_coord[1]+box)
-                               ).mean(dim=["latitude","longitude"])
+        for i in range(len(location)):
+            geo_coord = tg_lat_lon(location[i])
         
-        df[tg_id[i]] = ts.sla
+            if box==0:
+                ts = duacs_y_ds.sel(latitude=geo_coord[0], longitude=geo_coord[1], 
+                                    method="nearest")
+            else:
+                ts = duacs_y_ds.sel(latitude=slice(geo_coord[0]-box, geo_coord[0]+box), 
+                                    longitude=slice(geo_coord[1]-box, geo_coord[1]+box)
+                                   ).mean(dim=["latitude","longitude"])
         
+            df[location[i]] = ts.sla
+        
+    elif type(location) == np.ndarray:
+        # Working with a region defined by a polygone
+        
+        region = regionmask.Regions([location], names=['reg'], abbrevs=['reg'])
+        
+        # Define the mask and change its value from 0 to 1
+        mask_alti = region.mask_3D(duacs_y_ds.longitude, duacs_y_ds.latitude)
+        
+        duacs_y_ds_m = duacs_y_ds.where(mask_alti)
+        
+        # Calculate the weighted regional average
+        # !!! Only works with regular grids
+        weights = np.cos(np.deg2rad(duacs_y_ds.latitude))
+        region_average = duacs_y_ds.weighted(mask_alti * weights).mean(dim=('latitude', 'longitude'))
+        df['region_average'] = region_average.sla
+    
     df['Average'] = df.mean(axis=1)
     
     return df
@@ -437,7 +437,7 @@ def StericSL(min_depth,max_depth, mask_name, data_source, window):
     
     return StericSL_df
     
-def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
+def GIA_ICE6G(tg_id):
     '''Read the current GIA 250kaBP-250kaAP from the ICE6G model and output a
     time series in a pandas dataframe format'''
     
@@ -445,6 +445,8 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     locat = []
     gia = []
     
+    # This file is difficult to read with Pandas because the number of rows 
+    # varies. The name of location have spaces and delimiter is space... 
     with open (dir_ICE6G + "drsl.PSMSL.ICE6G_C_VM5a_O512.txt", "r") as myfile:
         data = myfile.readlines()
         
@@ -462,7 +464,7 @@ def GIA_ICE6G(tg_id=[20, 22, 23, 24, 25, 32]):
     gia_df = gia_df.set_index("Location")
     gia_df = gia_df.sort_index()
     gia_avg = (gia_df.loc[tg_id]).GIA.mean() /10 # Convert from mm/y to cm/y
-    time = np.arange(1900, 2025)
+    time = np.arange(1900, 2030)
     gia_ts = gia_avg * (time - time[0])
     gia_ts_list = [("time", time),
                   ("GIA", gia_ts)]
@@ -998,16 +1000,19 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
     for i in range(cond_loop):
         
         if location_type == 'tg_id':
+            print('Working on tide gauge id: '+ str(location[i]))
             coord = tg_lat_lon(location[i])
+            sl_loc = sl_df[location[i]]
         elif location_type == 'region':
             coord = [np.mean(location[:,0]), np.mean(location[:,1])]
+            sl_loc = sl_df['Average']
         
-        print('Working on tide gauge id: '+ str(location[i]))
-        gia_ts_df = GIA_ICE6G([location[i]])
-        
-        # Remove GIA from budget when using altimetry
         if opt_sl == 'altimetry':
-            gia_ts_df['GIA'] = 0
+            # There is no GIA in the altimetry measurements
+            time = pd.Series(np.arange(1900, 2030), name='time')
+            gia_ts_df = pd.DataFrame({'GIA':np.zeros(len(time))}, index=time)
+        else:
+            gia_ts_df = GIA_ICE6G(location[i])
 
         if opt_glaciers == 'marzeion15':
             glac_ts_df = glaciers_m15([location[i]], extrap=True, del_green=True)
@@ -1057,9 +1062,9 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
-            diff_sl_df = sl_df[location[i]] - sealevel_df.Total
+            diff_sl_df = sl_loc - sealevel_df.Total
             diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
-            wpn_ef_df = make_wpn_ef([location[i]], diff_sl_df, with_nodal, 
+            wpn_ef_df = make_wpn_ef(coord, diff_sl_df, with_nodal, 
                                     with_trend=False, product=opt_wind_ibe[1])
         elif opt_wind_ibe[0] == 'dynamical_model':
             if opt_wind_ibe[1] == 'WAQUA':
