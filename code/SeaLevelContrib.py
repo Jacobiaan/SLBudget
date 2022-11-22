@@ -291,7 +291,7 @@ def altimetry_obs(location, box):
 
     duacs_dir = '~/Data/duacs_cmems/'
     file_name = f'{duacs_dir}cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1M-m_*.nc'
-    duacs_ds = xr.open_mfdataset(file_name).load()
+    duacs_ds = xr.open_mfdataset(file_name) #.load()
     duacs_ds = rotate_longitude(duacs_ds, 'longitude')
     duacs_ds['sla'] = duacs_ds.sla*100 # Convert from meter to cm
     duacs_y_ds = duacs_ds.groupby('time.year').mean()
@@ -1002,9 +1002,11 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         if location_type == 'tg_id':
             print('Working on tide gauge id: '+ str(location[i]))
             coord = tg_lat_lon(location[i])
+            print('with lat/lon')
             sl_loc = sl_df[location[i]]
         elif location_type == 'region':
-            coord = [np.mean(location[:,0]), np.mean(location[:,1])]
+            coord = [np.mean(location[:,1]), np.mean(location[:,0])]
+            print('Working on ')
             sl_loc = sl_df['Average']
         
         if opt_sl == 'altimetry':
