@@ -115,8 +115,11 @@ def make_wind_df(lat_i, lon_i, product):
     direction = np.mod(np.angle(u + v * 1j), 2*np.pi)
     
     # Compute the wind squared while retaining sign, as an approximation of stress
-    u2 = u**2 * np.sign(u)
-    v2 = v**2 * np.sign(v)
+    #u2 = u**2 * np.sign(u)
+    #v2 = v**2 * np.sign(v)
+    wind_magnitude = np.sqrt(u**2 + v**2)
+    u2 = wind_magnitude*u
+    v2 = wind_magnitude*v
     
     # put everything in a dataframe
     wind_df = pd.DataFrame(data=dict(u=u, v=v, t=u[timen], speed=speed, 
