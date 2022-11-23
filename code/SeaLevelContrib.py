@@ -37,6 +37,7 @@ def find_closest(lat, lon, lat_i, lon_i):
 def make_wind_df(lat_i, lon_i, product):
     """create a dataset for NCEP1 wind (1948-now) at 1 latitude/longitude point 
     or ERA5 (1950-now) or 20CR reanalysis"""
+    
     if product == 'NCEP1':
         # Use for OpenDAP:
         #NCEP1 = 'http://www.esrl.noaa.gov/psd/thredds/dodsC/Datasets/ncep.reanalysis.derived/surface_gauss/'
@@ -339,6 +340,7 @@ def steric_masks_north_sea(da, mask_name):
     in the North Sea.
     The input data array needs to have a latitude/longitude coordinates with
     longitudes from -180 to 180.'''
+    
     if mask_name == 'ENS':
         # Extended North Sea mask
         lat = np.array(da.lat)
@@ -372,6 +374,16 @@ def steric_masks_north_sea(da, mask_name):
         mask = mask.where(mask.lon >= -12)
         mask = mask.where(mask.lat <= 52)
         mask = mask.where(mask.lat >= 35)
+
+    elif mask_name == 'BB':
+        # Bay of Biscay
+        mask = xr.where(np.isnan(da[0,:,:,:]
+                                 .sel(depth=500, method='nearest')), np.NaN, 1)
+        mask = mask.where(mask.lon <= 0)
+        mask = mask.where(mask.lon >= -10)
+        mask = mask.where(mask.lat <= 50)
+        mask = mask.where(mask.lat >= 44)    
+    
         
     elif mask_name == 'NWS':
         # Norwegian Sea
@@ -387,6 +399,7 @@ def steric_masks_north_sea(da, mask_name):
 
     del mask['depth']
     del mask['time']
+    
     return mask
 
 def thickness_from_depth(depth):
