@@ -291,7 +291,7 @@ def altimetry_obs(location, box):
 
     duacs_dir = '~/Data/duacs_cmems/'
     file_name = f'{duacs_dir}cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1M-m_*.nc'
-    duacs_ds = xr.open_mfdataset(file_name) #.load()
+    duacs_ds = xr.open_mfdataset(file_name, chunks={'time':6})  #.load()
     duacs_ds = rotate_longitude(duacs_ds, 'longitude')
     duacs_ds['sla'] = duacs_ds.sla*100 # Convert from meter to cm
     duacs_y_ds = duacs_ds.groupby('time.year').mean()
@@ -399,7 +399,7 @@ def thickness_from_depth(depth):
     thick_da = xr.DataArray(thick, coords={'depth': depth[:]}, dims='depth')
     return thick_da
     
-def StericSL(min_depth,max_depth, mask_name, data_source, window):
+def StericSL(data_source, mask_name, min_depth, max_depth, window):
     '''Compute the steric sea level in cm integrated between two depth levels 
     given in meters. '''
     
@@ -978,8 +978,20 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sl_df = altimetry_obs(location, 0)
     
     if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:
-        loc_steric_df = StericSL(0, max_depth=opt_steric[2], mask_name=opt_steric[1], 
-                             data_source=opt_steric[0], window=opt_steric[3])
+        
+        if len(opt_steric[1])==1:
+            # Using a one-layer steric representation
+            loc_steric_df = StericSL(opt_steric[0], opt_steric[1], 0, opt_steric[2], 
+                                     opt_steric[3])
+        elif len(opt_steric[1])==2:
+            # Using a two-layer steric representation
+            loc_steric_up = StericSL(opt_steric[0], opt_steric[1][0], 0, 
+                                     opt_steric[2][0], opt_steric[3][0])
+            loc_steric_down = StericSL(opt_steric[0], opt_steric[1][1], opt_steric[2][0] , 
+                                       opt_steric[2][1], opt_steric[3][1])
+            
+            loc_steric_df = loc_steric_up+loc_steric_down
+        
     else:
         print('ERROR: option for opt_steric[0] undefined')
 
@@ -1002,11 +1014,11 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         if location_type == 'tg_id':
             print('Working on tide gauge id: '+ str(location[i]))
             coord = tg_lat_lon(location[i])
-            print('with lat/lon')
+            print(f'with lat/lon {coord}')
             sl_loc = sl_df[location[i]]
         elif location_type == 'region':
             coord = [np.mean(location[:,1]), np.mean(location[:,0])]
-            print('Working on ')
+            print(f'Working on a region with lat/lon: {coord}')
             sl_loc = sl_df['Average']
         
         if opt_sl == 'altimetry':
