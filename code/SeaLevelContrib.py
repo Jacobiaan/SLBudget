@@ -452,7 +452,18 @@ def StericSL(data_source, mask_name, min_depth, max_depth, window):
                                        frac, return_sorted=False)
     
     return StericSL_df
+
+def speed2height_ts(variable_name, speed):
+    '''Convert a speed float to a height time series dataframe'''
     
+    time = np.arange(1900, 2030)
+    ts = speed * (time - time[0])
+    ts_list = [("time", time),(variable_name, ts)]
+    ts_df = pd.DataFrame.from_dict(dict(ts_list))
+    ts_df = ts_df.set_index("time")
+    
+    return ts_df
+
 def GIA_ICE6G(tg_id):
     '''Read the current GIA 250kaBP-250kaAP from the ICE6G model and output a
     time series in a pandas dataframe format'''
@@ -480,14 +491,39 @@ def GIA_ICE6G(tg_id):
     gia_df = gia_df.set_index("Location")
     gia_df = gia_df.sort_index()
     gia_avg = (gia_df.loc[tg_id]).GIA.mean() /10 # Convert from mm/y to cm/y
-    time = np.arange(1900, 2030)
-    gia_ts = gia_avg * (time - time[0])
-    gia_ts_list = [("time", time),
-                  ("GIA", gia_ts)]
-    gia_ts_df = pd.DataFrame.from_dict(dict(gia_ts_list))
-    gia_ts_df = gia_ts_df.set_index("time")
+    
+    gia_ts_df = speed2height_ts("GIA", gia_avg)
     
     return gia_ts_df
+
+def GIA_ICE6G_region(location):
+    '''Input region, output weigthed averaged influence of GIA on absolute sea 
+    level.
+    GIA has a small influence on absolute sea level. This is the sum of radial
+    velocities and relative sea level which are given for ICE6G.'''
+    
+    dir_ICE6G = f'{PATH_SLBudgets_data}GIA/ICE6G/'
+    
+    drad_ds = xr.open_dataset(f'{dir_ICE6G}drad.1grid_O512.nc')
+    dsea_ds = xr.open_dataset(f'{dir_ICE6G}dsea.1grid_O512.nc')
+    
+    abs_da = dsea_ds.Dsea_250+drad_ds.Drad_250
+    abs_da = abs_da.sortby(abs_da['Lat'])
+
+    region = regionmask.Regions([location], names=['reg'], abbrevs=['reg'])
+    
+    mask = region.mask_3D(abs_da.Lon, abs_da.Lat)
+
+    masked_abs_da = abs_da.where(mask)
+    
+    # Compute the weithed average
+    weights = np.cos(np.deg2rad(masked_abs_da.Lat))
+    region_mean = masked_abs_da.weighted(weights).mean(dim=("Lat", "Lon"))
+    region_mean = region_mean/10 # Convert from mm/yr to cm/yr
+    
+    region_mean_ts_df = speed2height_ts('GIA', region_mean)
+    
+    return region_mean_ts_df
 
 def tg_lat_lon(tg_id):
     '''Return tide gauge latitude, longitude location given the id as input'''
@@ -908,7 +944,7 @@ def contrib_frederikse2020(coord, var, extrap=False):
     
     Inputs: 
     coord [latitude, longitude]
-    Variable (available: tws, AIS, glac, GrIS, steric)
+    variable (available: tws, AIS, glac, GrIS, steric)
     extrap: Possibility to extrapolate up to 2020.
     
     Outputs:
@@ -1038,9 +1074,7 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             sl_loc = sl_df['Average']
         
         if opt_sl == 'altimetry':
-            # There is no GIA in the altimetry measurements
-            time = pd.Series(np.arange(1900, 2030), name='time')
-            gia_ts_df = pd.DataFrame({'GIA':np.zeros(len(time))}, index=time)
+            gia_ts_df = GIA_ICE6G_region(location)
         else:
             gia_ts_df = GIA_ICE6G(location[i])
 
