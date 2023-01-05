@@ -538,6 +538,7 @@ def tg_lat_lon(tg_id):
 def glaciers_m15_glo():
     '''Provides glacier contributions to local sea level between 1900 and 2013
     from Marzeion et al. 2015.'''
+    
     M15_dir = PATH_SLBudgets_data + 'Glaciers/Marzeion2015/tc-9-2399-2015-supplement/'
     M15_glo_df = pd.read_csv(M15_dir + 'data_marzeion_etal_update_2015.txt', 
                              header=None, 
@@ -545,7 +546,10 @@ def glaciers_m15_glo():
     M15_glo_df = M15_glo_df.set_index('time')
     M15_glo_df['Glaciers'] = - M15_glo_df.Glaciers + M15_glo_df.Glaciers.iloc[0]
     del M15_glo_df['CI']
-    return M15_glo_df / 10 # Convert from mm to cm
+    M15_glo_df = M15_glo_df/10 # Convert from mm to cm
+    M15_glo_df.index = np.array(M15_glo_df.index).astype(int)
+    
+    return M15_glo_df 
 
 def glaciers_m15(tg_id, extrap=False, del_green=False):
     '''Provides glacier contributions to local sea level between 1900 and 2013. 
@@ -590,6 +594,7 @@ def glaciers_m15(tg_id, extrap=False, del_green=False):
         for i in range(6):
             M15_regloc_tot_df.loc[M15_regloc_tot_df.index.max() + 1] = \
             M15_regloc_tot_df.Glaciers.iloc[-1] + trend
+            
     return M15_regloc_tot_df/10 # Convert to cm
 
 def glaciers_zemp19_glo():
@@ -937,40 +942,46 @@ def nodal_tides_potential(lat, time_years):
     
     return nodcyc_df
 
-def contrib_frederikse2020(coord, var, extrap=False):
+def contrib_frederikse2020(coord, var, output_type='rsl', extrap=False):
     '''
     Read values from Frederikse et al. 2020 budget.
     Data from 1900 to 2018.
     
     Inputs: 
-    coord [latitude, longitude]
-    variable (available: tws, AIS, glac, GrIS, steric)
-    extrap: Possibility to extrapolate up to 2020.
+    coord: [latitude, longitude]
+    variable: tws, AIS, glac, GrIS, steric
+    output_type: rsl, rad, abs
+    These represent the type of fingerprint to use. Influence of mass loss on
+    relative sea level (rsl), radial velocities (rad) or absolute sea level
+    which is the the sum rsl+rad.
+    extrap: Possibility to extrapolate a few years.
     
     Outputs:
     Dataframe giving the average contribution at the tide gauges
     '''    
     
-    data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
+    data_dir = f'{PATH_SLBudgets_data}Frederikse2020/'
     ds = xr.open_dataset(f'{data_dir}{var}.nc')
     
     # Fill coastal points to avoid selecting NaN
-    sel_da = ds[f'{var}_rsl_mean'].ffill('lon', 3).bfill('lon', 3)
+    if output_type=='abs':
+        sel_da = (ds[f'{var}_rsl_mean'].ffill('lon', 3).bfill('lon', 3)+
+                  ds[f'{var}_rad_mean'].ffill('lon', 3).bfill('lon', 3))
+    else:
+        sel_da = ds[f'{var}_{output_type}_mean'].ffill('lon', 3).bfill('lon', 3)
+        
     sel_da = sel_da/10 # Convert from mm to cm
     
     loc_da = sel_da.sel(lat = coord[0], 
                         lon = coord[1], 
                         method = 'nearest')
     
-    df = loc_da.squeeze().reset_coords(drop=True).to_dataframe()
-
     fr_name = {'tws' : 'TWS', 
-               'AIS' : 'Antarctica', 
-               'GrIS' : 'Greenland', 
-               'glac' : 'Glaciers'}
+           'AIS' : 'Antarctica', 
+           'GrIS' : 'Greenland', 
+           'glac' : 'Glaciers'}
     
-    df.columns = [fr_name[var]]
-    
+    df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name=fr_name[var])    
     
     if extrap:
         nby = 10
@@ -986,20 +997,32 @@ def contrib_frederikse2020_glob(var, extrap=False):
     Read values from Frederikse et al. 2020 budget.
     
     Inputs:
-    variable (available: Steric, Glaciers, for other variables see excel sheet)
+    variable (available: GloSteric, glac, for other variables see excel sheet)
     
     Outputs:
     Pandas dataframe of this variable with time in years as index
     '''
     
-    data_dir = '/Users/dewilebars/Projects/SLBudget/data/Frederikse2020/'
+    fr_name = {'tws' : 'TWS', 
+               'AIS' : 'Antarctic Ice Sheet', 
+               'GrIS' : 'Greenland Ice Sheet', 
+               'glac' : 'Glaciers',
+               'GloSteric' : 'Steric'}
+    
+    out_names = {'tws' : 'TWS', 
+                 'AIS' : 'Antarctica', 
+                 'GrIS' : 'Greenland', 
+                 'glac' : 'Glaciers',
+                 'GloSteric' : 'GloSteric'}
+    
+    data_dir = f'{PATH_SLBudgets_data}Frederikse2020/'
     fts = pd.read_excel(f'{data_dir}/global_basin_timeseries.xlsx', sheet_name='Global')
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
     fts = fts/10 # Convert from mm to cm
-    out_df = pd.DataFrame(fts[f'{var} [mean]'])
-    if var == 'Steric':
-        out_df = out_df.rename(columns = {'Steric [mean]':'GloSteric'})
+    out_df = pd.DataFrame(fts[f'{fr_name[var]} [mean]'])
+    
+    out_df = out_df.rename(columns = {f'{fr_name[var]} [mean]':out_names[var]})
         
     if extrap:
         nby = 10
@@ -1026,8 +1049,10 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
     
     if opt_sl == 'tide_gauge':
         sl_df = tide_gauge_obs(location, interp=True)
+        output_type = 'rsl' # Relative sea level
     elif opt_sl == 'altimetry':
         sl_df = altimetry_obs(location, 0)
+        output_type = 'abs' # Absolute sea level
     
     if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:
         
@@ -1053,7 +1078,7 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         if global_steric == 'levitus':
             glo_steric_df =  LevitusSL(extrap=True, extrap_back=True)
         elif global_steric == 'fred20':
-            glo_steric_df = contrib_frederikse2020_glob('Steric', extrap=True)
+            glo_steric_df = contrib_frederikse2020_glob('GloSteric', extrap=True)
         else:
             print('ERROR: option for global_steric undefined')
         
@@ -1079,11 +1104,14 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             gia_ts_df = GIA_ICE6G(location[i])
 
         if opt_glaciers == 'marzeion15':
-            glac_ts_df = glaciers_m15([location[i]], extrap=True, del_green=True)
+            glac_ts_df = glaciers_m15([location[i]], extrap=True, 
+                                      del_green=True)
         elif opt_glaciers == 'zemp19':
-            glac_ts_df = glaciers_zemp19([location[i]], extrap=True, del_green=True)
+            glac_ts_df = glaciers_zemp19([location[i]], extrap=True, 
+                                         del_green=True)
         elif opt_glaciers == 'fred20':
-            glac_ts_df = contrib_frederikse2020(coord, 'glac', extrap=True)
+            glac_ts_df = contrib_frederikse2020(coord, 'glac', output_type, 
+                                                extrap=True)
         else:
             print('ERROR: option for opt_glaciers undefined')
 
@@ -1093,7 +1121,8 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_antarctica == 'rignot19':
             ant_df = ant_rignot19() * ices_fp([location[i]] , 'mit_unif', 'ant')
         elif opt_antarctica == 'fred20':
-            ant_df = contrib_frederikse2020(coord, 'AIS', extrap=True)
+            ant_df = contrib_frederikse2020(coord, 'AIS', output_type, 
+                                            extrap=True)
         else:
             print('ERROR: option for opt_antarctica undefined')
 
@@ -1101,14 +1130,16 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             green_df = green_mouginot19_glo() * ices_fp([location[i]] , 
                                                         'mit_unif', 'green')
         elif opt_greenland == 'fred20':
-            green_df = contrib_frederikse2020(coord, 'GrIS', extrap=True)
+            green_df = contrib_frederikse2020(coord, 'GrIS', output_type, 
+                                              extrap=True)
         else:
             print('ERROR: option for opt_greenland undefined')
         
         if opt_tws == 'humphrey19':
             tws_df = tws_glo_humphrey19(extrap=True)
         elif opt_tws == 'fred20':
-            tws_df = contrib_frederikse2020(coord, 'tws', extrap=True)
+            tws_df = contrib_frederikse2020(coord, 'tws', output_type, 
+                                            extrap=True)
         
         sealevel_df = steric_df.copy()
         sealevel_df = sealevel_df.join([ gia_ts_df, glac_ts_df, 
