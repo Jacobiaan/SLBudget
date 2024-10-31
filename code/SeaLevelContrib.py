@@ -386,7 +386,6 @@ def steric_masks_north_sea(da, mask_name):
         mask = mask.where(mask.lon >= -10)
         mask = mask.where(mask.lat <= 50)
         mask = mask.where(mask.lat >= 44)    
-    
         
     elif mask_name == 'NWS':
         # Norwegian Sea
@@ -992,12 +991,14 @@ def contrib_frederikse2020(coord, var, output_type='rsl', extrap=False):
     
     return df
 
-def contrib_frederikse2020_glob(var, extrap=False):
+def contrib_frederikse2020_glob(var, extrap=False, quant='mean'):
     '''
     Read values from Frederikse et al. 2020 budget.
     
     Inputs:
-    variable (available: GloSteric, glac, for other variables see excel sheet)
+    var (available: GloSteric, glac, for other variables see excel sheet)
+    extrap: Extrapollate the trend of the last 10 years forward
+    quant: 'mean', 'upper', 'lower'
     
     Outputs:
     Pandas dataframe of this variable with time in years as index
@@ -1020,9 +1021,9 @@ def contrib_frederikse2020_glob(var, extrap=False):
     fts = fts.rename(columns = {fts.columns[0]:'time'})
     fts = fts.set_index('time')
     fts = fts/10 # Convert from mm to cm
-    out_df = pd.DataFrame(fts[f'{fr_name[var]} [mean]'])
+    out_df = pd.DataFrame(fts[f'{fr_name[var]} [{quant}]'])
     
-    out_df = out_df.rename(columns = {f'{fr_name[var]} [mean]':out_names[var]})
+    out_df = out_df.rename(columns = {f'{fr_name[var]} [{quant}]':out_names[var]})
         
     if extrap:
         nby = 10
