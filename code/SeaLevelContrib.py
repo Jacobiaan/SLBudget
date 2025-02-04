@@ -406,17 +406,19 @@ def steric_masks_north_sea(da, mask_name):
 
 def thickness_from_depth(depth):
     '''Define a thickness Data Array from depth coordinate'''
+    
     midp = (np.array(depth[1:])+np.array(depth[:-1]))/2
     midp = np.insert(midp, 0, np.array([0]))
-    midp = np.insert(midp, len(midp), np.array(depth[-1]) + 
-                     (np.array(depth[-1]) - np.array(depth[-2])))
+    midp = np.insert(midp, len(midp), 
+                     np.array(depth[-1]) 
+                     + (np.array(depth[-1]) - np.array(depth[-2])))
     thick = midp[1:] - midp[:-1]
     thick_da = xr.DataArray(thick, coords={'depth': depth[:]}, dims='depth')
-    return thick_da
     
-def StericSL(data_source, mask_name, min_depth, max_depth, window):
-    '''Compute the steric sea level in cm integrated between two depth levels 
-    given in meters. '''
+    return thick_da
+
+def read_density(data_source):
+    '''Read the density dataset from IAP, EN4_21 or EN4_22'''
     
     if data_source == 'IAP':
         density_ds = xr.open_mfdataset(PATH_SLBudgets_data+
@@ -430,7 +432,14 @@ def StericSL(data_source, mask_name, min_depth, max_depth, window):
                        'DataSteric/density_teos10_en422_g10_1900_2022.nc')
     else:
         print('ERROR: data_source not defined')
+        
+    return density_ds
     
+def StericSL(data_source, mask_name, min_depth, max_depth, window):
+    '''Compute the steric sea level in cm integrated between two depth levels 
+    given in meters. '''
+    
+    density_ds = read_density(data_source)
     thick_da = thickness_from_depth(density_ds.depth)
     SumDens = density_ds.density * thick_da
 
@@ -440,6 +449,7 @@ def StericSL(data_source, mask_name, min_depth, max_depth, window):
     rho_0 = (density_ds.density[0 ,0 ,: ,:] * mask).mean(dim=['lat', 'lon'])
     StericSL = (- SumDens.sel(depth=slice(min_depth,max_depth)).sum(dim='depth') 
                 / rho_0) * 100
+    
     StericSL = StericSL - StericSL.sel(time=slice(1940,1960)).mean(dim='time')
     StericSL.name = 'Steric'
     StericSL_df = StericSL.to_dataframe()
