@@ -1014,7 +1014,7 @@ def contrib_frederikse2020_glob(var, extrap=False, quant='mean'):
     Pandas dataframe of this variable with time in years as index
     '''
     
-    fr_name = {'tws' : 'TWS', 
+    fr_name = {'tws' : 'Terrestrial Water Storage', 
                'AIS' : 'Antarctic Ice Sheet', 
                'GrIS' : 'Greenland Ice Sheet', 
                'glac' : 'Glaciers',
