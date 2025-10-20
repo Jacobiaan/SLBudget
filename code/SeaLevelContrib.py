@@ -1,4 +1,4 @@
-# List of functions to be used in sea level budget
+ # List of functions to be used in sea level budget
 
 import datetime
 import netCDF4
@@ -15,8 +15,10 @@ import regionmask
 import statsmodels.api as sm
 lowess = sm.nonparametric.lowess
 
-PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
-PATH_Data = '/Users/dewilebars/Data/'
+#PATH_SLBudgets_data = '/Users/dewilebars/Projects/SLBudget/data/'
+PATH_SLBudgets_data = '/Users/kyrab/Github/SLBudget/data/'
+#PATH_Data = '/Users/dewilebars/Data/'
+PATH_Data = '/Users/kyrab/Github/SlBudget/data/DataSteric/'
 
 tg_data_dir = f'{PATH_SLBudgets_data}rlr_annual'
 
@@ -54,19 +56,22 @@ def make_wind_df(lat_i, lon_i, product):
         pn = 'pres'
         
     elif product == 'ERA5':
-        ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/'      
-        u_file = [ERA5_dir + 'ERA5_be_u10.nc', 
-                  ERA5_dir + 'ERA5_u10.nc',
-                  ERA5_dir + 'ERA5_u10_2021.nc']
-        v_file = [ERA5_dir + 'ERA5_be_v10.nc', 
-                  ERA5_dir + 'ERA5_v10.nc',
-                  ERA5_dir + 'ERA5_v10_2021.nc']
-        p_file = [ERA5_dir + 'ERA5_be_msl.nc', 
-                  ERA5_dir + 'ERA5_msl.nc',
-                  ERA5_dir + 'ERA5_msl_2021.nc']
+        ERA5_dir = PATH_SLBudgets_data + 'WindPressure/ERA5/' 
+        u_file = ERA5_dir + 'ERA5_u10.nc'
+        v_file = ERA5_dir + 'ERA5_v10.nc'
+        p_file = ERA5_dir + 'ERA5_p_msl.nc'
+        #u_file = [ERA5_dir + 'ERA5_be_u10.nc', 
+        #          ERA5_dir + 'ERA5_u10.nc',
+        #          ERA5_dir + 'ERA5_u10_2021.nc']
+        #v_file = [ERA5_dir + 'ERA5_be_v10.nc', 
+        #          ERA5_dir + 'ERA5_v10.nc',
+        #          ERA5_dir + 'ERA5_v10_2021.nc']
+        #p_file = [ERA5_dir + 'ERA5_be_msl.nc', 
+        #          ERA5_dir + 'ERA5_msl.nc',
+        #          ERA5_dir + 'ERA5_msl_2021.nc']
         latn = 'latitude'
         lonn = 'longitude'
-        timen = 'time'
+        timen = 'valid_time'
         un = 'u10'
         vn = 'v10'
         pn = 'msl'
@@ -78,7 +83,7 @@ def make_wind_df(lat_i, lon_i, product):
         p_file = TCR_dir + 'prmsl.mon.mean.nc'
         latn = 'lat'
         lonn = 'lon'
-        timen = 'time'
+        timen = 'time'  #in stead of time since it is called differently 
         un = 'uwnd'
         vn = 'vwnd'
         pn = 'prmsl'
@@ -86,20 +91,21 @@ def make_wind_df(lat_i, lon_i, product):
     if lon_i < 0:
         lon_i = lon_i + 360
     
-    # open the 3 files
-    ds_u = xr.open_mfdataset(u_file)
-    ds_v = xr.open_mfdataset(v_file)
-    ds_p = xr.open_mfdataset(p_file)
-    
+    # open the 3 files (xr.open_dataset in stead of xr.open_mfdataset(), because it is only 1 file per vaiable with the updated code.)
+    ds_u = xr.open_dataset(u_file)
+    ds_v = xr.open_dataset(v_file)
+    ds_p = xr.open_dataset(p_file)
+
+    #print(ds_u)
     # read lat, lon, time from 1 dataset
-    lat, lon = ds_u[latn][:], ds_u[lonn][:]
+    lat, lon = ds_u[latn][:], ds_u[lonn][:]          # xarray data so therefore [latn][:] gives the variables
     
     # this is the index where we want our data
-    i, j = find_closest(lat, lon, lat_i, lon_i)
+    i, j = find_closest(lat, lon, lat_i, lon_i)      # Finds the closest at en lon to the tide gauge lat and lon
     
     # get the u, v, p variables
     print('found point', float(lat[i]), float(lon[j]))    
-    u = ds_u[un][:, i, j]
+    u = ds_u[un][:, i, j]                               #select all u wind components at all times at the specific longitude              
     v = ds_v[vn][:, i, j]
     pres = ds_p[pn][:, i, j]
     pres = pres - pres.mean()
@@ -169,15 +175,17 @@ def make_wpn_ef(coord, tgm_df, with_nodal, with_trend, product):
                                          with_wind=True, with_pres=True, with_ar=False)
     
     mod = np.array(linear_fit.params[:]) * np.array(linear_fit.model.exog[:,:])
-    
+    #print(mod)
     wpn_ef_df = pd.DataFrame(index=df_c.index)
     
     if with_nodal:
         wpn_ef_df['Nodal'] = mod[:,[4,5]].sum(axis=1)
     
-    
     wpn_ef_df['Wind'] = mod[:,[1,2]].sum(axis=1)
     wpn_ef_df['Pressure'] = mod[:,3]
+
+    #test (met deze er bij werkt het plotten niet dus deze op een andere manier zien te snappen
+    #wpn_ef_df['constant'] = mod[:,0]
     
     return wpn_ef_df
 
@@ -253,8 +261,20 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
     for i in range(len(tg_id)):
         tg_data = pd.read_csv(f'{tg_data_dir}/data/{tg_id[i]}.rlrdata', 
                               sep=';', header=None, names=names_col2)
+
+        
         tg_data = tg_data.set_index('time')
+        
         tg_data.height = tg_data.height.where(~np.isclose(tg_data.height,-99999))
+
+        #even geforceerde toename om iets te testen:
+        #n = np.arange(len(tg_data))
+        #tg_data.height = tg_data.height + n * (5)  
+
+        #Only data from 1993
+        #tg_data = tg_data.loc[1993:]
+        tg_data = tg_data.loc[1960:]
+        
         tg_data.height = tg_data.height - tg_data.height.mean()
 
         if i==0:
@@ -270,6 +290,9 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
         
     tg_data_df['Average'] = tg_data_df.mean(axis=1)
     tg_data_df = tg_data_df * 0.1 # Convert from mm to cm
+
+    #seledt specific data.
+    #tg_data_df = tg_data_df.loc[1993:]
     
     return tg_data_df
 
@@ -372,7 +395,7 @@ def steric_masks_north_sea(da, mask_name):
     elif mask_name == 'EBB':
         # Extended bay of Biscay
         mask = xr.where(np.isnan(da[0,:,:,:]
-                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
+                                 .sel(depth=2000, method='nearest')), np.nan, 1)
         mask = mask.where(mask.lon <= -2)
         mask = mask.where(mask.lon >= -12)
         mask = mask.where(mask.lat <= 52)
@@ -381,7 +404,7 @@ def steric_masks_north_sea(da, mask_name):
     elif mask_name == 'BB':
         # Bay of Biscay
         mask = xr.where(np.isnan(da[0,:,:,:]
-                                 .sel(depth=500, method='nearest')), np.NaN, 1)
+                                 .sel(depth=500, method='nearest')), np.nan, 1)
         mask = mask.where(mask.lon <= 0)
         mask = mask.where(mask.lon >= -10)
         mask = mask.where(mask.lat <= 50)
@@ -390,7 +413,7 @@ def steric_masks_north_sea(da, mask_name):
     elif mask_name == 'NWS':
         # Norwegian Sea
         mask = xr.where(np.isnan(da[0,:,:,:]
-                                 .sel(depth=2000, method='nearest')), np.NaN, 1)
+                                 .sel(depth=2000, method='nearest')), np.nan, 1)
         mask = mask.where(mask.lon <= 8)
         mask = mask.where(mask.lon >= -10)
         mask = mask.where(mask.lat <= 69)
@@ -429,7 +452,7 @@ def read_density(data_source):
                        'density_teos10_en4_1900_2019.nc')
     elif data_source == 'EN4_22':
         density_ds = xr.open_dataset(PATH_SLBudgets_data + 
-                       'DataSteric/density_teos10_en422_g10_1900_2022.nc')
+                       'DataSteric/density_teos10_en422_g10_1900_2024.nc')                                                 #updated density file
     else:
         print('ERROR: data_source not defined')
         
@@ -996,7 +1019,7 @@ def contrib_frederikse2020(coord, var, output_type='rsl', extrap=False):
         nby = 10
         trend = np.polyfit(df.index[-nby:], df.iloc[-nby:], 1)
         
-        for i in range(3):
+        for i in range(7):
             df.loc[df.index.max() + 1] = (trend[1]+trend[0]*(df.index.max()+1))
     
     return df
@@ -1039,7 +1062,7 @@ def contrib_frederikse2020_glob(var, extrap=False, quant='mean'):
         nby = 10
         trend = np.polyfit(out_df.index[-nby:], out_df.iloc[-nby:], 1)
         
-        for i in range(3):
+        for i in range(7):
             out_df.loc[out_df.index.max() + 1] = (
                 trend[1]+trend[0]*(out_df.index.max()+1))
     
@@ -1059,13 +1082,14 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         cond_loop = 1
     
     if opt_sl == 'tide_gauge':
-        sl_df = tide_gauge_obs(location, interp=True)
-        output_type = 'rsl' # Relative sea level
+        sl_df = tide_gauge_obs(location, interp=True)                 # Tide gauge observation reads a list of tide gauge data and computes teh mean values. It loops over all tide gauges and calculates the mean. All data is calculated relative  to the mean. 
+        # option to select data here: 
+        output_type = 'rsl'                                           # Relative sea level - used later. 
     elif opt_sl == 'altimetry':
         sl_df = altimetry_obs(location, 0)
         output_type = 'abs' # Absolute sea level
     
-    if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:
+    if opt_steric[0] in ['EN4_21', 'EN4_22', 'IAP']:                  # opt_steric is a list, where the first entry opt_steric[0] gives the data type. (in opt_steric, the region, depth and number of years in smoothing is also defined (see budget file))
         
         if len(opt_steric[1])==1:
             # Using a one-layer steric representation
@@ -1095,13 +1119,13 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         
         steric_df = steric_df.join(glo_steric_df)
         steric_df = steric_df.rename(columns={'Steric': 'LocSteric'})
-        steric_df['LocSteric'] = steric_df['LocSteric'] - steric_df['GloSteric']
+        steric_df['LocSteric'] = steric_df['LocSteric'] - steric_df['GloSteric']    #Steric local and global is combined, but global steric is substracted 
     
-    for i in range(cond_loop):
+    for i in range(cond_loop):                                                        
         
         if location_type == 'tg_id':
             print('Working on tide gauge id: '+ str(location[i]))
-            coord = tg_lat_lon(location[i])
+            coord = tg_lat_lon(location[i])                                         #Finds latitude and longitude corresponding to the tide gauge ID
             print(f'with lat/lon {coord}')
             sl_loc = sl_df[location[i]]
         elif location_type == 'region':
@@ -1112,7 +1136,7 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         if opt_sl == 'altimetry':
             gia_ts_df = GIA_ICE6G_region(location)
         else:
-            gia_ts_df = GIA_ICE6G(location[i])
+            gia_ts_df = GIA_ICE6G(location[i])                                        #adds GIA influence on the location. INput region, output weightet averaged influence of GIA on absolute sea level. 
 
         if opt_glaciers == 'marzeion15':
             glac_ts_df = glaciers_m15([location[i]], extrap=True, 
@@ -1120,7 +1144,7 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_glaciers == 'zemp19':
             glac_ts_df = glaciers_zemp19([location[i]], extrap=True, 
                                          del_green=True)
-        elif opt_glaciers == 'fred20':
+        elif opt_glaciers == 'fred20':                                                                #contribution of glaciers according to frederikse.
             glac_ts_df = contrib_frederikse2020(coord, 'glac', output_type, 
                                                 extrap=True)
         else:
@@ -1154,10 +1178,10 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         
         sealevel_df = steric_df.copy()
         sealevel_df = sealevel_df.join([ gia_ts_df, glac_ts_df, 
-                                        ant_df, green_df, tws_df], how='inner')
+                                        ant_df, green_df, tws_df], how='inner')                              # all contributors are added to one dataframe sealevel_df, by how=inner, only the intersection of the years are saved. 
         
-        if opt_nodal == 'potential':
-            nodal_df = nodal_tides_potential(coord[0], sealevel_df.index)
+        if opt_nodal == 'potential':                                                                        # For first run it is potential. 
+            nodal_df = nodal_tides_potential(coord[0], sealevel_df.index)                                   # Nodal_tides_potential() computes nodal tide potential based on Woodwordt 2012 
             sealevel_df = sealevel_df.join(nodal_df)
             with_nodal = False
         elif opt_nodal == 'regression':
@@ -1168,6 +1192,9 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         sealevel_df['Total'] = sealevel_df.sum(axis=1)
 
         if opt_wind_ibe[0] == 'regression':
+            #print('HALLOOOO')
+            #print('Testsealevellloc')
+            #print(sl_loc)
             diff_sl_df = sl_loc - sealevel_df.Total
             diff_sl_df = diff_sl_df.to_frame(name='height').dropna()
             wpn_ef_df = make_wpn_ef(coord, diff_sl_df, with_nodal, 
@@ -1182,26 +1209,37 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         else:
             print('ERROR: option for opt_wind_ibe[0] undefined')
 
+
         sealevel_df = sealevel_df.join(wpn_ef_df, how='inner')
-        del sealevel_df['Total']
-        sealevel_df.insert(0, 'Total', sealevel_df.sum(axis=1))
-        sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()
-        sealevel_df.index.name = 'time'
-        sealevel_df = sealevel_df - sealevel_df.iloc[0,:]
-        sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(location[i])])
+
+        
+         
+        del sealevel_df['Total']                                                                              # Total is created again because the first one is used to compute the wind and pressure influence with the linear fit. 
+        sealevel_df.insert(0, 'Total', sealevel_df.sum(axis=1))                                               # Creates a column in the data frame for the sum of all contributors 
+        sealevel_df['Total'] = sealevel_df['Total'] - sealevel_df['Total'].mean()                             # Normalises this sum relative to the mean. 
+        sealevel_df.index.name = 'time'                                         
+        sealevel_df = sealevel_df - sealevel_df.iloc[0,:]                                                     # Substracts the first row from all rows to get the sealevel relative to the first time step. Values are 0 at t = 0 
+        sealevel_df = pd.concat([sealevel_df], axis=1, keys=[str(location[i])])                               # the values for the tide gauge in this loop are saved with extra key (sort of second level key)
+
         
         if i==0:
             slall_df = sealevel_df.copy()
         else:
-            slall_df = pd.concat([slall_df, sealevel_df], axis=1)
+            slall_df = pd.concat([slall_df, sealevel_df], axis=1)                                             # combines slall_df from previous tide gauge with sealevel_df from current tide gauge. New colums from sealevel_df are added to the old slall df and slall contains all up to now
 
     if avg:        # Compute the average contributors at all tide gauges
-        slmean_df = slall_df.groupby(level=1, axis=1, sort=False).mean()
-        slmean_df = slmean_df.join(sl_df.Average, how='inner')
+        #slmean_df = slall_df.groupby(level=1, axis=1, sort=False).mean()   #this function might be outdated soon:  FutureWarning: DataFrame.groupby with axis=1 is deprecated. Do `frame.T.groupby(...)` without axis instead. 
+
+        #Calculates the mean over all tide gauge stations. 
+        slmean_df = slall_df.T.groupby(level=1, sort=False).mean().T  #the new version of python does not work with axis is 0. in stead of that, t makes the transpose. I compared both outputs and they should be equal. 
+        slmean_df = slmean_df.join(sl_df.Average, how='inner')                                               # Adds the mean sea level rise at all tide gauge stations to the dataset. 
+        
         slmean_df = slmean_df.rename(columns={'Average': 'Obs'})
         slall_df = slmean_df
 
+        print(slall_df)
     return slall_df
+
 
 def plot_budget(location_name, slmean_df):
     '''Summary plot of the sea level budget. Should be split in smaller functions.'''
@@ -1210,7 +1248,7 @@ def plot_budget(location_name, slmean_df):
     fig.tight_layout(pad=1.9)
 
     ax[0,0].plot(slmean_df.Obs - slmean_df.Obs.mean(), 'o-', label='Sea level observations')
-    ax[0,0].plot(slmean_df.Total - slmean_df.Total.mean() , 'r-', label='Sum of contributors')
+    ax[0,0].plot(slmean_df.Total - slmean_df.Total.mean(), 'r-', label='Sum of contributors')
 
     #ax[0,0].set_xlabel('time')
     ax[0,0].set_ylabel('sea level (cm)')
