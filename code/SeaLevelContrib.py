@@ -20,7 +20,8 @@ PATH_SLBudgets_data = '/Users/kyrab/Github/SLBudget/data/'
 #PATH_Data = '/Users/dewilebars/Data/'
 PATH_Data = '/Users/kyrab/Github/SlBudget/data/DataSteric/'
 
-tg_data_dir = f'{PATH_SLBudgets_data}rlr_annual'
+tg_data_dir = f'{PATH_SLBudgets_data}rlr_annual_2024' #add_2024 for new data
+
 
 # Define a few constants
 er = 6.371e6 # Earth's radius in meters
@@ -293,6 +294,7 @@ def tide_gauge_obs(tg_id=[20, 22, 23, 24, 25, 32], interp=False):
 
     #seledt specific data.
     #tg_data_df = tg_data_df.loc[1993:]
+    #tg_data_df = tg_data_df.loc[2002:]
     
     return tg_data_df
 
@@ -560,7 +562,7 @@ def GIA_ICE6G_region(location):
 def tg_lat_lon(tg_id):
     '''Return tide gauge latitude, longitude location given the id as input'''
     
-    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual_2024'  #why is this defined twice? 
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
     filelist_df = pd.read_csv(tg_data_dir + '/filelist.txt', sep=';', header=None, names=names_col)
     filelist_df = filelist_df.set_index('id')
@@ -743,7 +745,7 @@ def ant_rignot19():
 def psmsl2mit(tg_id):
     '''Function that translates the tide gauge number from the PSMSL data base to 
     the numbers used by the kernels of Mitrovica et al. 2018'''
-    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual'
+    tg_data_dir = PATH_SLBudgets_data + 'rlr_annual_2024'
     kern_dir = PATH_SLBudgets_data + 'Mitrovica2018Kernels/'
     kern_df = pd.read_fwf(kern_dir + 'sites.txt', header=None)
     names_col = ('id', 'lat', 'lon', 'name', 'coastline_code', 'station_code', 'quality')
@@ -1158,6 +1160,44 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_antarctica == 'fred20':
             ant_df = contrib_frederikse2020(coord, 'AIS', output_type, 
                                             extrap=True)
+            # option to add for Gravis test.
+        elif opt_antarctica == 'Gravis':
+
+            # Combine Frederikse data and Gravis
+            fredant_df = contrib_frederikse2020(coord, 'AIS', output_type, 
+                                            extrap=True)
+
+
+            # does not work yet since id 22 is not working
+            
+            Gravis_dir = '../outputs/Gravis_Antarctica/'
+            Gravis_ant_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Ant_clean.nc')
+            sel_da = Gravis_ant_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
+
+            loc_da = sel_da.sel(lat = coord[0], 
+                                lon = coord[1], 
+                                method = 'nearest')
+            fr_name = {
+                'tws' : 'TWS', 
+                'AIS' : 'Antarctica', 
+                'GrIS' : 'Greenland', 
+                'glac' : 'Glaciers',
+                'grav': 'Ant_gravis'}
+            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name=fr_name['grav']) 
+            gravis_df = gravis_df*1.1837950465122913 #for now corrected... 
+
+            # now combine the two by taking frederikse for data before 2002, taking the mean between 2002 and 2018 and using Gravis after from 2018 and after. 
+
+            Antcombi = fredant_df['Antarctica'].copy()
+            
+            Antcombi.loc[2002:] = ((gravis_df['Ant_gravis'] + fredant_df['Antarctica'].loc[2002]) + fredant_df['Antarctica'])/2
+           
+            Antcombi.loc[2018:] = gravis_df['Ant_gravis'] - gravis_df['Ant_gravis'].loc[2018] + Antcombi.loc[2018] 
+
+            Antcombi= Antcombi.loc[:2024]
+            ant_df = Antcombi.to_frame()
+                        
+        
         else:
             print('ERROR: option for opt_antarctica undefined')
 
@@ -1167,6 +1207,46 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_greenland == 'fred20':
             green_df = contrib_frederikse2020(coord, 'GrIS', output_type, 
                                               extrap=True)
+
+        elif opt_greenland == 'Gravis':
+            # Combine Frederikse data and Gravis
+            fredgre_df = contrib_frederikse2020(coord, 'GrIS', output_type, 
+                                            extrap=True)
+
+
+            # does not work yet since id 22 is not working
+            
+            Gravis_dir = '../outputs/Gravis_Antarctica/'
+            Gravis_gre_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Gre_clean.nc')
+            sel_da = Gravis_gre_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
+
+            loc_da = sel_da.sel(lat = coord[0], 
+                                lon = coord[1], 
+                                method = 'nearest')
+            fr_name = {
+                'tws' : 'TWS', 
+                'AIS' : 'Antarctica', 
+                'GrIS' : 'Greenland', 
+                'glac' : 'Glaciers',
+                'grav': 'Ant_gravis',
+                'gravgre': 'Gre_gravis'
+            }
+            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name=fr_name['gravgre']) 
+
+            # now combine the two by taking frederikse for data before 2002, taking the mean between 2002 and 2018 and using Gravis after from 2018 and after. 
+
+            Greencombi = fredgre_df['Greenland'].copy()
+            
+            Greencombi.loc[2002:] = ((gravis_df['Gre_gravis'] + fredgre_df['Greenland'].loc[2002]) + fredgre_df['Greenland'])/2
+           
+            Greencombi.loc[2018:] = gravis_df['Gre_gravis'] - gravis_df['Gre_gravis'].loc[2018] + Greencombi.loc[2018] 
+
+            Greencombi= Greencombi.loc[:2024]
+            green_df = Greencombi.to_frame()
+
+
+
+          
         else:
             print('ERROR: option for opt_greenland undefined')
         
