@@ -3,13 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import xarray as xr
 import xesmf as xe                     # package for regridding 
-#import cartopy.crs as ccrs              # for the regridding test(now only to understand how it works later maybe more - probably I can do a lot with this package
 
 #import gravity toolkit 
 import gravity_toolkit as gravtk
 
-#from scipy import signal              #not sure if I need those
-#import importlib
 import sys
 sys.path.append('../code')
 
@@ -71,7 +68,7 @@ def sealevelfunctions(meltrates, lon_target, lat_target, landsea):
 
     #rsl_da = rsl_da.where(landsea != 1, np.nan)
 
-    rsl_da = rsl_da.where(landsea == 0) #Only keep the values at sea. 
+    rsl_da = rsl_da.where(landsea == 0) #Only keep the values at sea, otherwise values at land are selected
 
     return rsl_da
 
