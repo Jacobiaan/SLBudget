@@ -1173,9 +1173,7 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             Gravis_ant_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Ant_clean.nc')
             sel_da = Gravis_ant_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
 
-            loc_da = sel_da.sel(lat = coord[0], 
-                                lon = coord[1], 
-                                method = 'nearest')
+            loc_da = sel_da.sel(lat = coord[0], lon = coord[1], method = 'nearest')
 
             gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name='Ant_gravis') 
             gravis_df = gravis_df*1.1837950465122913 #for now corrected... 
@@ -1209,15 +1207,11 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             # Combine Frederikse data and Gravis: Frederikse for the years without GravIS
             fredgre_df = contrib_frederikse2020(coord, 'GrIS', output_type, extrap=True)
 
-            # works only if land tiles form landsea are none (currently this is the case in the file). 
+            # Only works if land tiles form the landsea mask are nan (currently this is the case in the file). 
             Gravis_dir = '../outputs/Gravis_Antarctica/'
             Gravis_gre_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Gre_clean.nc')
             sel_da = Gravis_gre_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
-
-            loc_da = sel_da.sel(lat = coord[0], 
-                                lon = coord[1], 
-                                method = 'nearest')
-
+            loc_da = sel_da.sel(lat = coord[0], lon = coord[1], method = 'nearest')
             gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name='Gre_gravis') 
 
             # Make Greencombi consisting of Frederikse data for data before 2018 and use Gravis after 2018. 
