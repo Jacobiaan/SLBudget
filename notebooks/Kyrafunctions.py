@@ -76,7 +76,6 @@ def sealevelfunctions(meltrates, lon_target, lat_target, landsea):
     return rsl_da
 
 
-#bla
 def makefrederiksefile(data, meanrise):
     '''
     Creates a file which has the same format as the data from Frederikse. In this way, the data from frederikse can be updated using this Grace data in the budget. 
