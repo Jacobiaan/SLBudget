@@ -1,4 +1,4 @@
- # List of functions to be used in sea level budget
+    # List of functions to be used in sea level budget
 
 import datetime
 import netCDF4
@@ -137,6 +137,8 @@ def make_wind_df(lat_i, lon_i, product):
     annual_wind_df = wind_df.groupby(wind_df.index.year).mean()
     
     return annual_wind_df
+
+
 
 def linear_model_zsm(df, with_trend=True, with_nodal=True, with_wind=True, with_pres=True, with_ar=False):
     ''' Define the statistical model, similar to zeespiegelmonitor'''
@@ -1026,7 +1028,7 @@ def contrib_frederikse2020(coord, var, output_type='rsl', extrap=False):
     
     return df
 
-def contrib_frederikse2020_glob(var, extrap=False, quant='mean'):
+def contrib_frederikse2020_glob(var, extrap=False, quant='mean'):  #Quant mean refers to using the mean in the excel file in stead of lower or upper
     '''
     Read values from Frederikse et al. 2020 budget.
     
@@ -1160,16 +1162,13 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
         elif opt_antarctica == 'fred20':
             ant_df = contrib_frederikse2020(coord, 'AIS', output_type, 
                                             extrap=True)
-            # option to add for Gravis test.
+            # option to add GravIS data 
         elif opt_antarctica == 'Gravis':
 
-            # Combine Frederikse data and Gravis
-            fredant_df = contrib_frederikse2020(coord, 'AIS', output_type, 
-                                            extrap=True)
-
-
-            # does not work yet since id 22 is not working
+            # 1. Use Frederikse for the years without Gravis data: 
+            fredant_df = contrib_frederikse2020(coord, 'AIS', output_type, extrap=True)
             
+            #2. Use Gravis data: 
             Gravis_dir = '../outputs/Gravis_Antarctica/'
             Gravis_ant_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Ant_clean.nc')
             sel_da = Gravis_ant_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
@@ -1177,24 +1176,21 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             loc_da = sel_da.sel(lat = coord[0], 
                                 lon = coord[1], 
                                 method = 'nearest')
-            fr_name = {
-                'tws' : 'TWS', 
-                'AIS' : 'Antarctica', 
-                'GrIS' : 'Greenland', 
-                'glac' : 'Glaciers',
-                'grav': 'Ant_gravis'}
-            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name=fr_name['grav']) 
+
+            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name='Ant_gravis') 
             gravis_df = gravis_df*1.1837950465122913 #for now corrected... 
 
-            # now combine the two by taking frederikse for data before 2002, taking the mean between 2002 and 2018 and using Gravis after from 2018 and after. 
-
+            #3. Make Antcombi consisting of the frederikse data 
             Antcombi = fredant_df['Antarctica'].copy()
-            
-            Antcombi.loc[2002:] = ((gravis_df['Ant_gravis'] + fredant_df['Antarctica'].loc[2002]) + fredant_df['Antarctica'])/2
-           
-            Antcombi.loc[2018:] = gravis_df['Ant_gravis'] - gravis_df['Ant_gravis'].loc[2018] + Antcombi.loc[2018] 
 
-            Antcombi= Antcombi.loc[:2024]
+            # Reference values to lign up the data
+            antfredreference = fredant_df['Antarctica'].loc[2014:2018].mean()
+            antgracereference = gravis_df['Ant_gravis'].loc[2014:2018].mean()
+
+            # Align GravIS data with frederikse data with the period 2014-2018 as a reference period. 
+            Antcombi.loc[2019:] = gravis_df['Ant_gravis'] - antgracereference + antfredreference 
+
+            #Antcombi= Antcombi.loc[:2024]
             ant_df = Antcombi.to_frame()
                         
         
@@ -1209,13 +1205,11 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
                                               extrap=True)
 
         elif opt_greenland == 'Gravis':
-            # Combine Frederikse data and Gravis
-            fredgre_df = contrib_frederikse2020(coord, 'GrIS', output_type, 
-                                            extrap=True)
-
-
-            # does not work yet since id 22 is not working
             
+            # Combine Frederikse data and Gravis: Frederikse for the years without GravIS
+            fredgre_df = contrib_frederikse2020(coord, 'GrIS', output_type, extrap=True)
+
+            # works only if land tiles form landsea are none (currently this is the case in the file). 
             Gravis_dir = '../outputs/Gravis_Antarctica/'
             Gravis_gre_ds = xr.open_dataset(f'{Gravis_dir}Gravis_Gre_clean.nc')
             sel_da = Gravis_gre_ds['IS_Gravis'].ffill('lon', 3).bfill('lon', 3)
@@ -1223,28 +1217,21 @@ def local_budget(location, opt_sl, opt_steric, opt_glaciers, opt_antarctica,
             loc_da = sel_da.sel(lat = coord[0], 
                                 lon = coord[1], 
                                 method = 'nearest')
-            fr_name = {
-                'tws' : 'TWS', 
-                'AIS' : 'Antarctica', 
-                'GrIS' : 'Greenland', 
-                'glac' : 'Glaciers',
-                'grav': 'Ant_gravis',
-                'gravgre': 'Gre_gravis'
-            }
-            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name=fr_name['gravgre']) 
 
-            # now combine the two by taking frederikse for data before 2002, taking the mean between 2002 and 2018 and using Gravis after from 2018 and after. 
+            gravis_df = loc_da.squeeze().reset_coords(drop=True).to_dataframe(name='Gre_gravis') 
 
+            # Make Greencombi consisting of Frederikse data for data before 2018 and use Gravis after 2018. 
             Greencombi = fredgre_df['Greenland'].copy()
-            
-            Greencombi.loc[2002:] = ((gravis_df['Gre_gravis'] + fredgre_df['Greenland'].loc[2002]) + fredgre_df['Greenland'])/2
-           
-            Greencombi.loc[2018:] = gravis_df['Gre_gravis'] - gravis_df['Gre_gravis'].loc[2018] + Greencombi.loc[2018] 
 
-            Greencombi= Greencombi.loc[:2024]
+            # Create a reference data to allign the data:
+            grefredreference = fredgre_df['Greenland'].loc[2014:2018].mean()
+            gregracereference = gravis_df['Gre_gravis'].loc[2014:2018].mean()
+
+            # Allign GravIs data with Frederikse data based on the reference period based on the mean betweeen 2014 and 2018. 
+            Greencombi.loc[2019:] = gravis_df['Gre_gravis'] - gregracereference + grefredreference 
+        
+            #Greencombi= Greencombi.loc[:2024]
             green_df = Greencombi.to_frame()
-
-
 
           
         else:
